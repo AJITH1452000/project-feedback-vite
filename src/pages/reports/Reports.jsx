@@ -11,7 +11,7 @@ import { BarChart3, ClipboardCheck, Download, FileSpreadsheet, Layers, PieChart 
 import { PageHeader, Pill, SectionCard, StatCard } from '../../components/common/index.jsx';
 import { useData } from '../../context/DataContext.jsx';
 import { useToast } from '../../context/ToastContext.jsx';
-import { CORE_DIMENSIONS, RATING_PRINCIPLES } from '../../data/seed.js';
+import { CORE_DIMENSIONS, RATING_PRINCIPLES } from '../../data/constants.js';
 import {
   avg, dimensionAverages, downloadCsv, downloadJson, f1, findProject, findUser, pendingAssignments,
   projectStats, ratingDistribution, reviewAvg, totalAssignments,

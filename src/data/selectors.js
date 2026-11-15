@@ -1,5 +1,5 @@
 /** Pure helpers over the workspace data (same rules as the backend contract). */
-import { RATING_PRINCIPLES } from './seed.js';
+import { RATING_PRINCIPLES } from './constants.js';
 
 export const avg = (list) => (list && list.length ? list.reduce((sum, value) => sum + value, 0) / list.length : 0);
 export const f1 = (value) => (typeof value === 'number' && !Number.isNaN(value) ? value.toFixed(1) : '—');
@@ -11,6 +11,18 @@ export const findProject = (projects, id) => projects.find((p) => p.id === id) |
 
 export function initials(name = '') {
   return name.replace(/[^\p{L}\s]/gu, ' ').trim().split(/\s+/).slice(0, 2).map((part) => part[0]?.toUpperCase() || '').join('') || 'U';
+}
+
+/** "just now", "5 min ago", "3 h ago", "Yesterday", or a date. Non-ISO strings are returned as-is. */
+export function timeAgo(value) {
+  const date = new Date(value);
+  if (!value || Number.isNaN(date.getTime())) return value || '';
+  const seconds = Math.round((Date.now() - date.getTime()) / 1000);
+  if (seconds < 45) return 'just now';
+  if (seconds < 3600) return `${Math.round(seconds / 60)} min ago`;
+  if (seconds < 86_400) return `${Math.round(seconds / 3600)} h ago`;
+  if (seconds < 172_800) return 'Yesterday';
+  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 }
 
 export function formatDate(iso) {

@@ -1,4 +1,4 @@
-import { BarChart3, FolderKanban, LayoutDashboard, MessageSquareText, Settings, ShieldAlert, UserRound } from 'lucide-react';
+import { BadgeCheck, BarChart3, FolderKanban, LayoutDashboard, MessageSquareText, Settings, ShieldAlert, Target, UserCog, UserRound } from 'lucide-react';
 
 /** Route + navigation map. `roles` controls who sees each entry (backend must enforce too). */
 export const NAV_SECTIONS = [
@@ -11,18 +11,21 @@ export const NAV_SECTIONS = [
       { to: '/people', label: 'People & skills', icon: ShieldAlert, roles: ['manager'], title: 'People & skills risk', subtitle: 'Signals that protect delivery timelines and staffing.' },
       { to: '/reports', label: 'Reports', icon: BarChart3, roles: ['manager'], title: 'Reports & analytics', subtitle: 'Distributions, team trends and audit records.' },
       { to: '/me', label: 'My performance', icon: UserRound, roles: ['employee'], title: 'My performance', subtitle: 'Feedback shared by managers and project leaders.' },
+      { to: '/goals', label: 'Goals', icon: Target, roles: ['manager', 'employee'], title: 'Performance goals', subtitle: 'Goal setting, approval, progress tracking and evaluation.' },
+      { to: '/hr-review', label: 'Performance review', icon: BadgeCheck, roles: ['hr'], title: 'Performance review', subtitle: 'Employee and department performance, final reviews and reports.' },
     ],
   },
   {
     label: 'Management',
     items: [
-      { to: '/settings', label: 'Settings', icon: Settings, roles: ['manager', 'employee'], title: 'Settings', subtitle: 'Review workflow, appearance and workspace preferences.' },
+      { to: '/users', label: 'People & access', icon: UserCog, roles: ['manager', 'hr'], title: 'People & access', subtitle: 'Accounts, roles and reporting lines.' },
+      { to: '/settings', label: 'Settings', icon: Settings, roles: ['manager', 'employee', 'hr'], title: 'Settings', subtitle: 'Review workflow, appearance and workspace preferences.' },
     ],
   },
 ];
 
 export const ALL_NAV_ITEMS = NAV_SECTIONS.flatMap((s) => s.items);
-export const homePathFor = (user) => (user?.role === 'manager' ? '/dashboard' : '/me');
+export const homePathFor = (user) => ({ manager: '/dashboard', hr: '/hr-review' }[user?.role] || '/me');
 export const navFor = (user) => NAV_SECTIONS
   .map((section) => ({ ...section, items: section.items.filter((item) => item.roles.includes(user?.role)) }))
   .filter((section) => section.items.length);

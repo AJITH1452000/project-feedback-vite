@@ -6,7 +6,7 @@ import Typography from '@mui/material/Typography';
 import { ArrowUpRight, Sparkles, X } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext.jsx';
 import { useData } from '../../context/DataContext.jsx';
-import { navFor } from '../../config/navigation.js';
+import { homePathFor, navFor } from '../../config/navigation.js';
 import { shell, sidebar } from '../../styles/layout.js';
 
 function SidebarContent({ onNavigate, onClose }) {
@@ -51,7 +51,7 @@ function SidebarContent({ onNavigate, onClose }) {
             <Typography variant="caption" component="p" sx={sidebar.promoText}>
               {isManager ? 'Turn team insights into better delivery outcomes.' : 'Track your growth across every project.'}
             </Typography>
-            <Box component={NavLink} to={isManager ? '/reports' : '/me'} sx={sidebar.promoLink} onClick={onNavigate}>
+            <Box component={NavLink} to={isManager ? '/reports' : homePathFor(user)} sx={sidebar.promoLink} onClick={onNavigate}>
               Explore insights <ArrowUpRight size={14} />
             </Box>
           </Box>

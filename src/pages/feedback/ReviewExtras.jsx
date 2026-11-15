@@ -5,7 +5,7 @@ import { BellRing, GitBranch, History, Plus } from 'lucide-react';
 import { Pill, ScoreBadge, SectionCard, UserAvatar, toneForStatus } from '../../components/common/index.jsx';
 import ResponsiveTable from '../../components/common/ResponsiveTable.jsx';
 import { useToast } from '../../context/ToastContext.jsx';
-import { RATING_PRINCIPLES } from '../../data/seed.js';
+import { RATING_PRINCIPLES } from '../../data/constants.js';
 import { formatDate } from '../../data/selectors.js';
 import { text } from '../../styles/common.js';
 import { feedback as s, people } from '../../styles/pages.js';

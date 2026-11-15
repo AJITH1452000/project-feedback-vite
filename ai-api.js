@@ -59,7 +59,7 @@ function readBody(request) {
   });
 }
 
-async function analyzeFeedback(strengths, developmentAreas, apiKey, model) {
+export async function analyzeFeedback(strengths, developmentAreas, apiKey, model) {
   const upstream = await fetch('https://api.openai.com/v1/chat/completions', {
     method: 'POST',
     headers: {

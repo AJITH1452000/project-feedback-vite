@@ -12,7 +12,6 @@ import { useData } from '../../context/DataContext.jsx';
 import {
   EmptyState, FilterChips, PageHeader, Pill, ScoreBadge, UserAvatar, toneForPriority,
 } from '../../components/common/index.jsx';
-import QuickReviewDialog from '../../components/review/QuickReviewDialog.jsx';
 import { findUser, formatDate, projectStats, projectTimeline } from '../../data/selectors.js';
 import { grid, page, text } from '../../styles/common.js';
 import { projects as s } from '../../styles/pages.js';
@@ -24,7 +23,6 @@ export default function Projects() {
   const [params, setParams] = useSearchParams();
   const { projects, users, reviews } = useData();
   const [priority, setPriority] = useState('All');
-  const [dialog, setDialog] = useState({ open: false });
   const [createOpen, setCreateOpen] = useState(params.get('new') === '1');
   const query = params.get('q') || '';
 
@@ -43,10 +41,7 @@ export default function Projects() {
         eyebrow="Delivery portfolio"
         title="Projects & delivery teams"
         description="Staff allocations, timeline health and review coverage for every client engagement."
-        actions={<>
-          <Button variant="outlined" startIcon={<Star size={16} />} onClick={() => setDialog({ open: true })}>Rate developer</Button>
-          <Button variant="contained" startIcon={<FolderPlus size={16} />} onClick={() => setCreateOpen(true)}>New project</Button>
-        </>}
+        actions={<Button variant="contained" startIcon={<FolderPlus size={16} />} onClick={() => setCreateOpen(true)}>New project</Button>}
       />
 
       <Box sx={s.toolbar}>
@@ -111,7 +106,8 @@ export default function Projects() {
                           </Box>
                           <Box sx={s.memberActions}>
                             <Pill tone={count ? 'success' : 'warning'}>{count ? `${count} done` : 'Pending'}</Pill>
-                            <Button size="small" variant="outlined" sx={s.reviewBtn} onClick={() => navigate(`/feedback?employee=${id}&project=${p.id}`)}>Review</Button>
+                            <Button size="small" variant="outlined" sx={s.reviewBtn} startIcon={<Star size={14} />}
+                              onClick={() => navigate(`/feedback?employee=${id}&project=${p.id}`)}>Give feedback</Button>
                           </Box>
                         </Box>
                       );
@@ -130,7 +126,6 @@ export default function Projects() {
           </Box>} />
       )}
 
-      <QuickReviewDialog open={dialog.open} onClose={() => setDialog({ open: false })} />
       <ProjectDialog open={createOpen} onClose={() => setCreateOpen(false)} onCreated={() => { setPriority('All'); setQuery(''); }} />
     </Box>
   );

@@ -1,6 +1,11 @@
 import { lazy, Suspense } from 'react';
 import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
+import Box from '@mui/material/Box';
+import Button from '@mui/material/Button';
+import Typography from '@mui/material/Typography';
+import { RefreshCw, ServerCrash } from 'lucide-react';
 import PageLoader from '../components/common/PageLoader.jsx';
+import { loader, text } from '../styles/common.js';
 import AppLayout from '../components/layout/AppLayout.jsx';
 import { useAuth } from '../context/AuthContext.jsx';
 import { homePathFor } from '../config/navigation.js';
@@ -14,6 +19,9 @@ const People = lazy(() => import('../pages/people/People.jsx'));
 const Reports = lazy(() => import('../pages/reports/Reports.jsx'));
 const Settings = lazy(() => import('../pages/settings/Settings.jsx'));
 const MyPerformance = lazy(() => import('../pages/profile/MyPerformance.jsx'));
+const Goals = lazy(() => import('../pages/goals/Goals.jsx'));
+const HrReview = lazy(() => import('../pages/hr/HrReview.jsx'));
+const Users = lazy(() => import('../pages/users/Users.jsx'));
 const NotFound = lazy(() => import('../pages/NotFound.jsx'));
 
 function RequireAuth({ roles, children }) {
@@ -36,9 +44,26 @@ function HomeRedirect() {
 
 const manager = ['manager'];
 
+/** Shown when the API server cannot be reached at start-up. */
+function ServerUnavailable({ message, onRetry }) {
+  return (
+    <Box sx={loader.screen} role="alert">
+      <Box sx={loader.inner} maxWidth={440}>
+        <Box sx={loader.mark}><ServerCrash size={22} /></Box>
+        <Typography variant="h3">Can’t reach the ProFeed server</Typography>
+        <Typography variant="body2" color="text.secondary">
+          {message || 'The API server is not responding.'} Start everything with <Box component="code" sx={text.code}>npm run dev</Box>, then try again.
+        </Typography>
+        <Button variant="contained" startIcon={<RefreshCw size={16} />} onClick={onRetry}>Try again</Button>
+      </Box>
+    </Box>
+  );
+}
+
 export default function App() {
-  const { status } = useAuth();
-  if (status === 'checking') return <PageLoader fullScreen label="Checking your session…" />;
+  const { status, error, retry } = useAuth();
+  if (status === 'checking') return <PageLoader fullScreen label="Connecting to the server…" />;
+  if (status === 'offline') return <ServerUnavailable message={error} onRetry={retry} />;
 
   return (
     <Suspense fallback={<PageLoader fullScreen />}>
@@ -52,6 +77,10 @@ export default function App() {
           <Route path="people" element={<RequireAuth roles={manager}><People /></RequireAuth>} />
           <Route path="reports" element={<RequireAuth roles={manager}><Reports /></RequireAuth>} />
           <Route path="me" element={<RequireAuth roles={['employee']}><MyPerformance /></RequireAuth>} />
+          <Route path="goals" element={<Goals />} />
+          <Route path="goals/:userId" element={<RequireAuth roles={['manager', 'hr']}><Goals /></RequireAuth>} />
+          <Route path="hr-review" element={<RequireAuth roles={['hr']}><HrReview /></RequireAuth>} />
+          <Route path="users" element={<RequireAuth roles={['manager', 'hr']}><Users /></RequireAuth>} />
           <Route path="settings" element={<Settings />} />
           <Route path="*" element={<NotFound />} />
         </Route>

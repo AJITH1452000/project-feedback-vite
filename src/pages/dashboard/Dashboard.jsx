@@ -4,7 +4,7 @@ import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
 import LinearProgress from '@mui/material/LinearProgress';
 import Typography from '@mui/material/Typography';
-import { ArrowRight, BellRing, Clock, Download, FolderKanban, FolderPlus, MessageSquareText, PieChart, Plus, Star, Target, Users } from 'lucide-react';
+import { ArrowRight, BellRing, Clock, Download, FolderKanban, FolderPlus, MessageSquareText, PieChart, Plus, Star, Target, UserPlus, Users } from 'lucide-react';
 import { useData } from '../../context/DataContext.jsx';
 import { useToast } from '../../context/ToastContext.jsx';
 import { useAuth } from '../../context/AuthContext.jsx';
@@ -37,6 +37,7 @@ export default function Dashboard() {
     .sort((a, b) => ({ High: 0, Medium: 1, Low: 2 }[a.pr] - { High: 0, Medium: 1, Low: 2 }[b.pr]) || daysUntil(a.e) - daysUntil(b.e))
     .slice(0, 3), [projects, reviews]);
 
+  const gettingStarted = !projects.length;
   const rate = (userId = null, projectId = null) => setDialog({ open: true, userId, projectId });
   const exportAudit = () => {
     downloadJson({ exportedAt: new Date().toISOString(), reviews }, `profeed-ratings-${Date.now()}.json`);
@@ -50,16 +51,30 @@ export default function Dashboard() {
         <Box sx={s.heroOrb2} />
         <Box sx={s.heroBody}>
           <Typography variant="overline" sx={s.heroEyebrow}>People performance · multi-project workspace</Typography>
-          <Typography variant="h1" sx={s.heroTitle}>Good to see you, {user?.name?.split(' ').slice(-1)[0] || 'there'} ✨</Typography>
+          <Typography variant="h1" sx={s.heroTitle}>Good to see you, {user?.name?.split(' ')[0] || 'there'} ✨</Typography>
           <Typography sx={s.heroText}>
-            {pending.length
-              ? `${pending.length} assignments still need a rating. Keep feedback timely while the work is fresh.`
-              : 'Every assignment has a current rating. Great job keeping feedback timely.'}
+            {gettingStarted
+              ? !users.length
+                ? 'Your workspace is empty. Start by adding your team members — then create a project and assign them.'
+                : 'Your team is ready. Create a project and assign people to start collecting feedback.'
+              : pending.length
+                ? `${pending.length} assignments still need a rating. Keep feedback timely while the work is fresh.`
+                : 'Every assignment has a current rating. Great job keeping feedback timely.'}
           </Typography>
         </Box>
         <Box sx={s.heroActions}>
-          <Button variant="outlined" sx={s.heroGhostBtn} startIcon={<Download size={16} />} onClick={exportAudit}>Export audit</Button>
-          <Button variant="contained" startIcon={<Plus size={16} />} onClick={() => rate()}>Rate developer</Button>
+          {gettingStarted ? (
+            <>
+              {!users.length && <Button variant="contained" startIcon={<UserPlus size={16} />} onClick={() => navigate('/users')}>Add team members</Button>}
+              <Button variant={users.length ? 'contained' : 'outlined'} sx={users.length ? undefined : s.heroGhostBtn} startIcon={<FolderPlus size={16} />}
+                onClick={() => navigate('/projects?new=1')} disabled={!users.length}>New project</Button>
+            </>
+          ) : (
+            <>
+              <Button variant="outlined" sx={s.heroGhostBtn} startIcon={<Download size={16} />} onClick={exportAudit}>Export audit</Button>
+              <Button variant="contained" startIcon={<Plus size={16} />} onClick={() => rate()}>Give project feedback</Button>
+            </>
+          )}
         </Box>
       </Box>
 
@@ -76,6 +91,7 @@ export default function Dashboard() {
             action={<Pill tone="primary" dot>Top {priority.length}</Pill>}
             footer={<><Button size="small" startIcon={<FolderPlus size={14} />} onClick={() => navigate('/projects?new=1')}>New project</Button>
               <Button size="small" endIcon={<ArrowRight size={14} />} onClick={() => navigate('/projects')}>All {projects.length} projects</Button></>}>
+            {!priority.length && <EmptyState icon={FolderKanban} title="No projects yet" description="Create a project and assign team members to start rating their work." />}
             {priority.map((p) => {
               const days = daysUntil(p.e);
               return (
@@ -111,7 +127,7 @@ export default function Dashboard() {
                       {item.project.n} · <Box component="span" sx={s.status(tone)}>{days < 0 ? 'overdue' : days < 30 ? `due in ${days}d` : 'checkpoint due'}</Box>
                     </Typography>
                   </Box>
-                  <Button size="small" sx={s.rateBtn} variant={tone === 'info' ? 'outlined' : 'contained'} onClick={() => rate(item.member.id, item.project.id)}>Rate</Button>
+                  <Button size="small" sx={s.rateBtn} variant={tone === 'info' ? 'outlined' : 'contained'} onClick={() => rate(item.member.id, item.project.id)}>Give feedback</Button>
                 </Box>
               );
             }) : <EmptyState title="Nothing pending" description="All assignments have at least one rating." />}

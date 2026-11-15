@@ -1,36 +1,12 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { loadEnv } from 'vite';
-import { createAiRequestHandler } from './ai-api.js';
-
-function feedbackAiPlugin(env) {
-  const handler = createAiRequestHandler({
-    apiKey: env.OPENAI_API_KEY || '',
-    model: env.OPENAI_MODEL || 'gpt-4.1-mini',
-    allowedOrigins: (env.AI_ALLOWED_ORIGINS || '')
-      .split(',')
-      .map((origin) => origin.trim())
-      .filter(Boolean),
-  });
-  // Only the AI route is handled here; every other /api request falls through to the backend proxy.
-  const aiOnly = (req, res, next) => (req.url?.startsWith('/analyze-feedback') ? handler(req, res, next) : next());
-  return {
-    name: 'profeed-feedback-ai',
-    configureServer(server) {
-      server.middlewares.use('/api', aiOnly);
-    },
-    configurePreviewServer(server) {
-      server.middlewares.use('/api', aiOnly);
-    },
-  };
-}
-
 /**
- * Dev/preview proxy → ProFeed backend (separate project, default http://127.0.0.1:4000).
+ * Dev/preview proxy → ProFeed API server (server/index.js, default http://127.0.0.1:4000).
  * The browser talks to one origin, so the HttpOnly session cookie and WebSocket work without CORS issues.
  */
 function backendProxy(env) {
-  const target = env.API_PROXY_TARGET || 'http://127.0.0.1:4000';
+  const target = env.API_PROXY_TARGET || `http://127.0.0.1:${env.API_PORT || 4000}`;
   return {
     '/api': { target, changeOrigin: false },
     '/socket.io': { target, ws: true, changeOrigin: false },
@@ -42,7 +18,6 @@ export default defineConfig(({ mode }) => {
   return {
   plugins: [
     react(),
-    feedbackAiPlugin(env),
   ],
   server: { port: 5173, host: '127.0.0.1', proxy: backendProxy(env) },
   preview: { port: 4173, host: '127.0.0.1', proxy: backendProxy(env) },

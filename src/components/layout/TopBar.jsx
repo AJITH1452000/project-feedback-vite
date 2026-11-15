@@ -23,7 +23,8 @@ import {
 import { useAuth } from '../../context/AuthContext.jsx';
 import { useData } from '../../context/DataContext.jsx';
 import { useThemeMode } from '../../context/ThemeModeContext.jsx';
-import { ALL_NAV_ITEMS } from '../../config/navigation.js';
+import { ALL_NAV_ITEMS, homePathFor } from '../../config/navigation.js';
+import { timeAgo } from '../../data/selectors.js';
 import { UserAvatar } from '../common/index.jsx';
 import { notifications as nStyles, searchDialog, topbar } from '../../styles/layout.js';
 import { divider } from '../../styles/common.js';
@@ -32,7 +33,7 @@ const TONE_ICON = { warning: AlertTriangle, error: AlertTriangle, info: Info, su
 
 function NotificationsButton() {
   const { notifications, markNotificationsRead } = useData();
-  const { isManager } = useAuth();
+  const { isManager, user } = useAuth();
   const navigate = useNavigate();
   const [anchor, setAnchor] = useState(null);
   const unread = notifications.filter((n) => n.unread);
@@ -41,9 +42,8 @@ function NotificationsButton() {
   const open = (n) => {
     if (n.unread) markNotificationsRead([n.id]);
     setAnchor(null);
-    if (!isManager) navigate('/me');
-    else if (n.tone === 'warning' || n.tone === 'error') navigate('/dashboard');
-    else navigate('/feedback?tab=history');
+    if (n.link) navigate(n.link);
+    else navigate(isManager ? '/feedback?tab=history' : homePathFor(user));
   };
 
   return (
@@ -76,7 +76,7 @@ function NotificationsButton() {
                 <Box sx={nStyles.body}>
                   <Box sx={nStyles.titleRow}>
                     <Typography variant="body2" sx={nStyles.title(n.unread)}>{n.title}</Typography>
-                    <Typography variant="caption" sx={nStyles.time}>{n.time}</Typography>
+                    <Typography variant="caption" sx={nStyles.time} title={n.time}>{timeAgo(n.time)}</Typography>
                   </Box>
                   <Typography variant="caption" sx={nStyles.detail}>{n.detail}</Typography>
                 </Box>
@@ -99,7 +99,7 @@ function SearchDialog({ open, onClose }) {
   const theme = useTheme();
   const fullScreen = useMediaQuery(theme.breakpoints.down('sm'));
   const navigate = useNavigate();
-  const { isManager } = useAuth();
+  const { isManager, user } = useAuth();
   const { projects, users } = useData();
   const [query, setQuery] = useState('');
 
@@ -107,7 +107,7 @@ function SearchDialog({ open, onClose }) {
 
   const q = query.trim().toLowerCase();
   const results = useMemo(() => {
-    const pages = ALL_NAV_ITEMS.filter((item) => (isManager ? item.roles.includes('manager') : item.roles.includes('employee')))
+    const pages = ALL_NAV_ITEMS.filter((item) => item.roles.includes(user?.role))
       .filter((item) => !q || item.label.toLowerCase().includes(q));
     if (!isManager) return { pages, projects: [], people: [] };
     return {
@@ -115,7 +115,7 @@ function SearchDialog({ open, onClose }) {
       projects: projects.filter((p) => !q || `${p.n} ${p.c}`.toLowerCase().includes(q)).slice(0, 5),
       people: users.filter((u) => !q || `${u.n} ${u.t}`.toLowerCase().includes(q)).slice(0, 5),
     };
-  }, [q, isManager, projects, users]);
+  }, [q, isManager, user, projects, users]);
 
   const go = (to) => { onClose(); navigate(to); };
   const nothing = !results.pages.length && !results.projects.length && !results.people.length;
@@ -207,7 +207,7 @@ export default function TopBar({ onOpenNav }) {
           <UserAvatar name={user?.name} size={32} />
           <Box sx={topbar.profileText}>
             <Typography variant="subtitle2" noWrap>{user?.name}</Typography>
-            <Typography variant="caption" noWrap sx={topbar.profileRole}>{user?.role === 'manager' ? 'Manager · full access' : user?.title}</Typography>
+            <Typography variant="caption" noWrap sx={topbar.profileRole}>{user?.role === 'manager' ? 'Manager · full access' : user?.role === 'hr' ? 'HR / Admin' : user?.title}</Typography>
           </Box>
         </Box>
       </Box>

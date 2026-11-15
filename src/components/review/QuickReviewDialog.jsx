@@ -1,5 +1,5 @@
 /**
- * "Submit project feedback" — opened by "Rate developer" / "Rate" buttons.
+ * "Submit project feedback" — opened by the dashboard "Give project feedback" / "Give feedback" buttons.
  *
  * Flow: write the evidence → AI analyses it and fills the overall rating plus delivery/collaboration
  * ratings → the manager reviews and edits anything → submit. Manual edits are never overwritten;
@@ -24,7 +24,7 @@ import { useTheme } from '@mui/material/styles';
 import { Info, PencilLine, RefreshCw, Send, Sparkles, Star, X } from 'lucide-react';
 import { useData } from '../../context/DataContext.jsx';
 import { useToast } from '../../context/ToastContext.jsx';
-import { FEEDBACK_VISIBILITY, QUALITY_LEVELS, RATING_PRINCIPLES, REVIEW_TYPES } from '../../data/seed.js';
+import { FEEDBACK_VISIBILITY, QUALITY_LEVELS, RATING_PRINCIPLES, REVIEW_TYPES } from '../../data/constants.js';
 import { f1, findUser } from '../../data/selectors.js';
 import { analyzeFeedback } from '../../services/api.js';
 import { dialog, grid } from '../../styles/common.js';

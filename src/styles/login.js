@@ -48,6 +48,10 @@ export const login = {
     border: `1px solid ${theme.palette.brand.heroBorder}`, backdropFilter: 'blur(12px)',
   }),
   heroStatValue: { color: 'brand.heroText' },
+  heroFeatureIcon: (theme) => ({
+    width: 34, height: 34, mb: 1.25, display: 'grid', placeItems: 'center', borderRadius: theme.tokens.radius.md,
+    bgcolor: theme.palette.brand.heroBorder, color: theme.palette.brand.heroText,
+  }),
   heroQuote: (theme) => ({
     mt: 4, p: 2.5, borderRadius: theme.tokens.radius.lg, bgcolor: theme.palette.brand.heroCard,
     border: `1px solid ${theme.palette.brand.heroBorder}`, backdropFilter: 'blur(12px)', maxWidth: 520,
@@ -69,7 +73,7 @@ export const login = {
   cardHead: { mb: 3 },
   cardTitle: { color: 'text.primary' },
   cardSub: { color: 'text.secondary', mt: 0.75 },
-  roleGrid: { display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: 1.25, mb: 2.5 },
+  roleGrid: { display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(auto-fit, minmax(150px, 1fr))' }, gap: 1.25, mb: 2.5 },
   roleOption: (active) => (theme) => ({
     textAlign: 'left', p: 1.75, borderRadius: theme.tokens.radius.md, cursor: 'pointer',
     border: `1.5px solid ${active ? theme.palette.primary.main : theme.palette.surface.border}`,

@@ -14,7 +14,7 @@ import { Pill, SectionCard } from '../../components/common/index.jsx';
 import { useData } from '../../context/DataContext.jsx';
 import { useAuth } from '../../context/AuthContext.jsx';
 import { useToast } from '../../context/ToastContext.jsx';
-import { CORE_DIMENSIONS, FLAGS, PROJECT_DURATIONS, REVIEWERS, REVIEW_PERIODS } from '../../data/seed.js';
+import { CORE_DIMENSIONS, FLAGS, PROJECT_DURATIONS, REVIEWERS, REVIEW_PERIODS } from '../../data/constants.js';
 import { avg, f1, findUser, ratingLabel } from '../../data/selectors.js';
 import { analyzeFeedback } from '../../services/api.js';
 import { form, grid, text } from '../../styles/common.js';
@@ -22,6 +22,8 @@ import { feedback as s } from '../../styles/pages.js';
 
 const DRAFT_KEY = 'profeed-review-draft';
 const EMPTY = [0, 0, 0, 0];
+/** Minimum evidence text before the AI can suggest ratings / before submitting. */
+const MIN_TEXT = 12;
 const clampScore = (n) => (typeof n === 'number' ? Math.max(1, Math.min(5, Math.round(n))) : null);
 
 function readDraft() {
@@ -34,12 +36,14 @@ export default function CreateReviewForm({ preset, injectedQuote, onQuoteConsume
   const { notify } = useToast();
   const draft = useMemo(readDraft, []);
 
-  const [userId, setUserId] = useState(preset?.userId || draft?.userId || 3);
+  // Start with the preset person, a saved draft, or the first real employee (never a hard-coded id).
+  const firstId = [preset?.userId, draft?.userId].find((id) => users.some((u) => u.id === id)) || users[0]?.id || '';
+  const [userId, setUserId] = useState(firstId);
   const [projectId, setProjectId] = useState(preset?.projectId || draft?.projectId || '');
   const [duration, setDuration] = useState(draft?.duration || PROJECT_DURATIONS[0]);
   const [period, setPeriod] = useState(draft?.period || REVIEW_PERIODS[0]);
   const [by, setBy] = useState(draft?.by || REVIEWERS[0]);
-  const [role, setRole] = useState(draft?.role || findUser(users, preset?.userId || 3).t);
+  const [role, setRole] = useState(draft?.role || (firstId ? findUser(users, firstId).t : ''));
   const [scores, setScores] = useState(draft?.scores || EMPTY);
   const [flags, setFlags] = useState(draft?.flags || []);
   const [rationale, setRationale] = useState(draft?.rationale || '');
@@ -49,6 +53,16 @@ export default function CreateReviewForm({ preset, injectedQuote, onQuoteConsume
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
   const [ai, setAi] = useState({ status: 'idle', result: null, error: '' });
+  const [triedSubmit, setTriedSubmit] = useState(false);
+
+  // Users load after the form mounts on a fresh page — pick the first employee once they arrive.
+  useEffect(() => {
+    if (!userId && users.length) { setUserId(users[0].id); setRole(users[0].t); }
+  }, [users, userId]);
+
+  const rationaleLength = rationale.trim().length;
+  const aiReady = rationaleLength >= MIN_TEXT || growth.trim().length >= MIN_TEXT;
+  const rationaleError = triedSubmit && rationaleLength < MIN_TEXT;
 
   const memberProjects = useMemo(() => projects.filter((p) => p.t.includes(userId)), [projects, userId]);
 
@@ -95,10 +109,7 @@ export default function CreateReviewForm({ preset, injectedQuote, onQuoteConsume
   }
 
   async function suggest() {
-    if (rationale.trim().length < 12 && growth.trim().length < 12) {
-      setAi({ status: 'error', result: null, error: 'Write a rationale or growth actions first — AI only reads that text.' });
-      return;
-    }
+    if (!aiReady) return; // button is disabled until there is enough text
     setAi({ status: 'loading', result: null, error: '' });
     try {
       const result = await analyzeFeedback({ strengths: rationale.trim(), developmentAreas: growth.trim() });
@@ -110,9 +121,11 @@ export default function CreateReviewForm({ preset, injectedQuote, onQuoteConsume
 
   async function submit(event) {
     event.preventDefault();
+    setTriedSubmit(true);
+    if (!userId) return setError('Add team members first (People & access), then assign them to a project.');
     if (!projectId) return setError('Choose a project this person is assigned to.');
-    if (scores.some((v) => !v)) return setError('Rate all four dimensions before submitting.');
-    if (rationale.trim().length < 12) return setError('Add a rationale with at least one concrete example (12+ characters).');
+    if (rationaleLength < MIN_TEXT) return setError('Write a short example of their work in “What did they do?” before submitting.');
+    if (scores.some((v) => !v)) return setError(`Give a rating for all four areas — ${scores.filter((v) => !v).length} still missing.`);
     if (settings?.safeguardRequired && rationale.includes('“') && !discussed) {
       return setError('Review settings require confirming the evidence context and discussion before submitting AI-sourced quotes.');
     }
@@ -128,6 +141,7 @@ export default function CreateReviewForm({ preset, injectedQuote, onQuoteConsume
       notify(`Review submitted for ${findUser(users, userId).n}. Awaiting employee response.`);
       setScores(EMPTY); setFlags([]); setRationale(''); setGrowth(''); setPerspective(''); setDiscussed(false);
       setAi({ status: 'idle', result: null, error: '' });
+      setTriedSubmit(false);
       onSubmitted?.();
     } catch (err) {
       setError(err.message);
@@ -165,8 +179,36 @@ export default function CreateReviewForm({ preset, injectedQuote, onQuoteConsume
         </Box>
       </SectionCard>
 
-      <SectionCard title="Performance rating" subtitle="Rate demonstrated outcomes for this period." icon={Star} action={<Pill tone="primary">1–5 scale</Pill>}>
+      <SectionCard title="Performance rating" subtitle="1. Write what they did  ·  2. Optionally get AI suggestions  ·  3. Rate each area." icon={Star} action={<Pill tone="primary">1–5 scale</Pill>}>
         <Box sx={form.section}>
+          <TextField label="What did they do? (examples)" required multiline minRows={4} value={rationale} onChange={(e) => setRationale(e.target.value.slice(0, 1000))} fullWidth
+            placeholder="e.g. Fixed the payment bug two days before the client demo and wrote tests so it can't come back."
+            error={rationaleError}
+            helperText={rationaleLength < MIN_TEXT
+              ? `Write at least ${MIN_TEXT} characters — one real example of their work (${rationaleLength}/${MIN_TEXT}).`
+              : `Good — specific outcomes make the rating fair. ${rationale.length}/1000`} />
+          <TextField label="What should they work on next? (optional)" multiline minRows={2} value={growth} onChange={(e) => setGrowth(e.target.value.slice(0, 600))} fullWidth
+            placeholder="e.g. Lead the next client demo; pair with a senior engineer on solution design." />
+
+          <Box sx={s.aiBox}>
+            <Box sx={s.aiHead}>
+              <Box>
+                <Typography variant="subtitle2" display="flex" alignItems="center" gap={0.75}><Sparkles size={15} /> AI rating suggestions (optional)</Typography>
+                <Typography variant="caption" color="text.secondary">
+                  {aiReady
+                    ? 'The AI reads only the text above and suggests a rating for each area. You decide — or just rate below yourself.'
+                    : 'Write an example above first — the AI only reads that text. You can also skip this and rate below yourself.'}
+                </Typography>
+              </Box>
+              <Button size="small" variant="outlined" onClick={suggest} disabled={!aiReady || ai.status === 'loading'}
+                startIcon={ai.status === 'loading' ? <CircularProgress size={14} /> : <Sparkles size={14} />}>
+                {ai.status === 'loading' ? 'Analyzing…' : 'Suggest ratings'}
+              </Button>
+            </Box>
+            {ai.status === 'done' && <Alert severity="info">{ai.result.summary || 'Suggestions ready — click an “AI” chip on an area to apply it.'}</Alert>}
+            {ai.status === 'error' && <Alert severity="warning">Couldn’t get suggestions: {ai.error} You can still rate each area yourself.</Alert>}
+          </Box>
+
           <Box display="flex" flexDirection="column" gap={1.25}>
             {CORE_DIMENSIONS.map((dim, i) => (
               <DimensionRating key={dim.id} dimension={dim} value={scores[i]} onChange={(v) => setScore(i, v)} suggestion={suggestions[i]} />
@@ -177,29 +219,8 @@ export default function CreateReviewForm({ preset, injectedQuote, onQuoteConsume
             <Box sx={s.overallBadge}>{overall ? f1(overall) : '—'}</Box>
             <Box>
               <Typography variant="subtitle2">{overall ? `Overall ${f1(overall)} / 5 · ${ratingLabel(overall)}` : 'Overall rating pending'}</Typography>
-              <Typography variant="caption" color="text.secondary">Average of rated dimensions — a structured discussion aid, not an automatic decision.</Typography>
+              <Typography variant="caption" color="text.secondary">Average of the four areas — a discussion aid, not an automatic decision.</Typography>
             </Box>
-          </Box>
-
-          <TextField label="Manager rationale & examples" multiline minRows={4} value={rationale} onChange={(e) => setRationale(e.target.value.slice(0, 1000))} fullWidth
-            placeholder="Describe specific outcomes, examples and the context behind your ratings…"
-            helperText={`Use observable behaviours and project outcomes. ${rationale.length}/1000`} />
-          <TextField label="Agreed growth actions" multiline minRows={3} value={growth} onChange={(e) => setGrowth(e.target.value.slice(0, 600))} fullWidth
-            placeholder="e.g. lead the next client demo; pair with a senior engineer on solution design…" />
-
-          <Box sx={s.aiBox}>
-            <Box sx={s.aiHead}>
-              <Box>
-                <Typography variant="subtitle2" display="flex" alignItems="center" gap={0.75}><Sparkles size={15} /> AI rating suggestions</Typography>
-                <Typography variant="caption" color="text.secondary">Reads only the rationale and growth text. Suggestions are advisory — you decide.</Typography>
-              </Box>
-              <Button size="small" variant="outlined" onClick={suggest} disabled={ai.status === 'loading'}
-                startIcon={ai.status === 'loading' ? <CircularProgress size={14} /> : <Sparkles size={14} />}>
-                {ai.status === 'loading' ? 'Analyzing…' : 'Suggest ratings'}
-              </Button>
-            </Box>
-            {ai.status === 'done' && <Alert severity="info">{ai.result.summary || 'Suggestions ready — tap an “AI” chip to apply.'}</Alert>}
-            {ai.status === 'error' && <Alert severity="warning">{ai.error} Manual rating is still available.</Alert>}
           </Box>
 
           <Box>

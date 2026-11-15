@@ -6,13 +6,14 @@ import MenuItem from '@mui/material/MenuItem';
 import Switch from '@mui/material/Switch';
 import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
-import { Database, Moon, Palette, Settings2, Sun, UserRound } from 'lucide-react';
+import { Database, KeyRound, Moon, Palette, Settings2, Sun, UserRound } from 'lucide-react';
 import { PageHeader, Pill, SectionCard, UserAvatar } from '../../components/common/index.jsx';
 import { useAuth } from '../../context/AuthContext.jsx';
 import { useData } from '../../context/DataContext.jsx';
 import { useThemeMode } from '../../context/ThemeModeContext.jsx';
 import { useToast } from '../../context/ToastContext.jsx';
-import { API_URL, isDemoMode } from '../../services/api.js';
+import { API_URL, changePassword } from '../../services/api.js';
+import { PASSWORD_MIN } from '../../data/constants.js';
 import { form, grid, page, text } from '../../styles/common.js';
 import { settings as s } from '../../styles/pages.js';
 
@@ -37,7 +38,7 @@ function ReviewSettingsCard() {
   };
 
   return (
-    <SectionCard title="Review workflow" subtitle="Cadence, visibility and AI evidence safeguards." icon={Settings2} action={<Pill tone="primary">Manager only</Pill>}>
+    <SectionCard title="Review workflow" subtitle="Cadence, visibility and AI evidence safeguards." icon={Settings2} action={<Pill tone="primary">Manager / HR</Pill>}>
       <Box sx={form.section}>
         <Box sx={grid.form2}>
           <TextField select label="Evaluation cadence" value={draft.cycle} onChange={(e) => setDraft({ ...draft, cycle: e.target.value })} fullWidth>
@@ -61,6 +62,15 @@ function ReviewSettingsCard() {
           </Box>
           <Switch checked={draft.reminders} onChange={(e) => setDraft({ ...draft, reminders: e.target.checked })} inputProps={{ 'aria-label': 'Automatic reminders' }} />
         </Box>
+        <Box sx={s.row}>
+          <Box>
+            <Typography variant="subtitle2">HR / Admin final review (optional)</Typography>
+            <Typography variant="caption" color="text.secondary">
+              On: HR confirms or calibrates each manager evaluation before the employee sees it. Off: the manager evaluation is final — for companies without an HR team.
+            </Typography>
+          </Box>
+          <Switch checked={Boolean(draft.hrReview)} onChange={(e) => setDraft({ ...draft, hrReview: e.target.checked })} inputProps={{ 'aria-label': 'HR final review' }} />
+        </Box>
         <Box sx={form.actions}>
           <Box />
           <Button variant="contained" onClick={save} disabled={saving} startIcon={saving ? <CircularProgress size={16} color="inherit" /> : null}>
@@ -72,18 +82,57 @@ function ReviewSettingsCard() {
   );
 }
 
-export default function Settings() {
-  const { user, isManager } = useAuth();
-  const { mode, setMode } = useThemeMode();
-  const { resetDemo } = useData();
+/** Change your own password (signs out your other devices). */
+function PasswordCard() {
   const { notify } = useToast();
+  const [values, setValues] = useState({ current: '', next: '', confirm: '' });
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+  const set = (key) => (e) => setValues((cur) => ({ ...cur, [key]: e.target.value }));
+
+  async function save(event) {
+    event.preventDefault();
+    if (!values.current) { setError('Enter your current password.'); return; }
+    if (values.next.length < PASSWORD_MIN) { setError(`New password must be at least ${PASSWORD_MIN} characters.`); return; }
+    if (values.next !== values.confirm) { setError('New passwords do not match.'); return; }
+    setSaving(true);
+    setError('');
+    try {
+      await changePassword(values.current, values.next);
+      setValues({ current: '', next: '', confirm: '' });
+      notify('Password changed. Your other devices were signed out.');
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <SectionCard title="Password" subtitle="Change the password you sign in with." icon={KeyRound}>
+      <Box component="form" onSubmit={save} noValidate sx={form.section}>
+        <TextField label="Current password" type="password" autoComplete="current-password" value={values.current} onChange={set('current')} fullWidth size="small" />
+        <TextField label="New password" type="password" autoComplete="new-password" value={values.next} onChange={set('next')} fullWidth size="small"
+          helperText={`At least ${PASSWORD_MIN} characters`} />
+        <TextField label="Confirm new password" type="password" autoComplete="new-password" value={values.confirm} onChange={set('confirm')} fullWidth size="small" />
+        {error && <Typography variant="body2" color="error">{error}</Typography>}
+        <Button type="submit" variant="outlined" disabled={saving} startIcon={saving ? <CircularProgress size={16} color="inherit" /> : null}>Change password</Button>
+      </Box>
+    </SectionCard>
+  );
+}
+
+export default function Settings() {
+  const { user, isManager, isHr } = useAuth();
+  const { mode, setMode } = useThemeMode();
+  const { live } = useData();
 
   return (
     <Box sx={page.root}>
       <PageHeader eyebrow="Workspace preferences" title="Settings" description="Manage review workflow, appearance and your workspace connection." />
       <Box sx={grid.mainAside}>
         <Box sx={page.stack}>
-          {isManager && <ReviewSettingsCard />}
+          {(isManager || isHr) && <ReviewSettingsCard />}
           <SectionCard title="Appearance" subtitle="Choose the display that works best for you." icon={Palette}>
             <Box sx={s.modeGrid} role="radiogroup" aria-label="Color theme">
               {[{ value: 'light', label: 'Light', icon: Sun }, { value: 'dark', label: 'Dark', icon: Moon }].map(({ value, label, icon: Icon }) => (
@@ -105,22 +154,16 @@ export default function Settings() {
               <UserAvatar name={user.name} size={52} />
               <Box minWidth={0}>
                 <Typography variant="subtitle1" sx={text.ellipsis}>{user.name}</Typography>
-                <Typography variant="caption" color="text.secondary">{user.title} · {isManager ? 'Manager (full access)' : 'Employee (own feedback)'}</Typography>
+                <Typography variant="caption" color="text.secondary">{user.title} · {isManager ? 'Manager (full access)' : isHr ? 'HR / Admin (all employees)' : 'Employee (own feedback)'}</Typography>
               </Box>
             </Box>
           </SectionCard>
-          <SectionCard title="Backend connection" subtitle="Where workspace data comes from." icon={Database}
-            action={<Pill tone={isDemoMode ? 'warning' : 'success'} dot>{isDemoMode ? 'Demo mode' : 'Connected'}</Pill>}>
+          <PasswordCard />
+          <SectionCard title="Server connection" subtitle="Where workspace data comes from." icon={Database}
+            action={<Pill tone={live === 'live' ? 'success' : 'warning'} dot>{live === 'live' ? 'Live' : live === 'offline' ? 'Offline' : 'Connecting'}</Pill>}>
             <Typography variant="body2" color="text.secondary">
-              {isDemoMode
-                ? <>Sample data stored in this browser tab. Set <Box component="code" sx={text.code}>VITE_API_URL</Box> in <Box component="code" sx={text.code}>.env</Box> to use the live backend.</>
-                : <>Using <Box component="code" sx={text.code}>{API_URL}</Box> with secure cookie sessions.</>}
+              API <Box component="code" sx={text.code}>{API_URL}</Box> · secure HttpOnly cookie session · real-time updates over WebSocket.
             </Typography>
-            {isDemoMode && (
-              <Button variant="outlined" fullWidth sx={{ mt: 2 }} onClick={() => { resetDemo(); notify('Demo data restored to the original seed.', 'info'); }}>
-                Reset demo data
-              </Button>
-            )}
           </SectionCard>
         </Box>
       </Box>

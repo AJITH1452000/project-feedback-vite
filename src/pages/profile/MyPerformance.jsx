@@ -5,7 +5,7 @@ import { FolderKanban, MessageSquareText, ShieldAlert, Star, TrendingUp } from '
 import { EmptyState, Pill, ScoreBadge, SectionCard, StatCard, UserAvatar } from '../../components/common/index.jsx';
 import { useAuth } from '../../context/AuthContext.jsx';
 import { useData } from '../../context/DataContext.jsx';
-import { CORE_DIMENSIONS } from '../../data/seed.js';
+import { CORE_DIMENSIONS } from '../../data/constants.js';
 import { avg, dimensionAverages, f1, findProject, formatDate, ratingLabel, reviewAvg } from '../../data/selectors.js';
 import { grid, page, text } from '../../styles/common.js';
 import { dashboard as ds, profile as s } from '../../styles/pages.js';

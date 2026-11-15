@@ -10,7 +10,6 @@ import Sidebar from './Sidebar.jsx';
 import TopBar from './TopBar.jsx';
 import PageLoader from '../common/PageLoader.jsx';
 import { useData } from '../../context/DataContext.jsx';
-import { isDemoMode } from '../../services/api.js';
 import { shell } from '../../styles/layout.js';
 
 export default function AppLayout() {
@@ -48,8 +47,8 @@ export default function AppLayout() {
         <Box component="footer" sx={shell.footer}>
           <Typography variant="caption">© 2026 ProFeed · Project feedback system</Typography>
           <Typography variant="caption" sx={shell.liveStatus}>
-            {!isDemoMode && <Box component="span" sx={shell.liveDot(live === 'live' ? 'success' : 'warning')} />}
-            {isDemoMode ? 'Demo mode · sample data' : live === 'live' ? 'Live · real-time updates on' : 'Reconnecting to server…'}
+            <Box component="span" sx={shell.liveDot(live === 'live' ? 'success' : 'warning')} />
+            {live === 'live' ? 'Live · real-time updates on' : live === 'offline' ? 'Offline · reconnecting to server…' : 'Connecting…'}
           </Typography>
         </Box>
       </Box>

@@ -302,6 +302,88 @@ export const settings = {
   }),
 };
 
+export const goals = {
+  back: { alignSelf: 'flex-start', mb: 1, ml: -1 },
+  stepper: { mt: 0.5, '& .MuiStepLabel-label': { fontSize: '0.8rem', fontWeight: 600 } },
+  stageActions: {
+    display: 'flex', gap: 1.25, flexWrap: 'wrap', alignItems: 'center', justifyContent: 'flex-end', mt: 2.5, pt: 2,
+    borderTop: 1, borderColor: 'surface.border', borderTopStyle: 'dashed',
+    '& .MuiButton-root': { width: { xs: '100%', sm: 'auto' } },
+  },
+  metaWide: { gridColumn: { xs: '1 / -1', md: 'span 2' } },
+  lastCheckIn: (theme) => ({ mt: 1.5, p: 1.25, borderRadius: theme.tokens.radius.sm, bgcolor: theme.palette.info.soft, color: theme.palette.text.primary }),
+  ratings: { display: 'grid', gap: 1, mt: 1.5, gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' } },
+  ratingCell: (theme) => ({ p: 1.25, borderRadius: theme.tokens.radius.sm, bgcolor: theme.palette.background.paper, border: `1px solid ${theme.palette.surface.border}`, display: 'flex', flexDirection: 'column', gap: 0.5 }),
+  checks: { display: 'flex', flexDirection: 'column', gap: 1.25, m: 0, p: 0, listStyle: 'none' },
+  check: (ok) => (theme) => ({
+    display: 'flex', gap: 1.25, alignItems: 'flex-start', p: 1.25, borderRadius: theme.tokens.radius.sm,
+    bgcolor: ok ? theme.palette.success.soft : theme.palette.warning.soft,
+    '& > svg': { flexShrink: 0, mt: '1px', color: ok ? theme.palette.success.main : theme.palette.warning.main },
+  }),
+  summaryGrid: { display: 'grid', gap: 1, gridTemplateColumns: '1fr 1fr' },
+  timeline: { m: 0, mt: 1.5, pl: 2.25, display: 'flex', flexDirection: 'column', gap: 0.25 },
+  miniProgress: { display: 'grid', gridTemplateColumns: 'minmax(60px, 1fr) 36px', alignItems: 'center', gap: 1, minWidth: 110 },
+  history: { display: 'flex', flexDirection: 'column', gap: 1, maxHeight: 220, overflowY: 'auto' },
+  historyItem: (isManager) => (theme) => ({
+    p: 1.25, borderRadius: theme.tokens.radius.sm, border: `1px solid ${theme.palette.surface.border}`,
+    bgcolor: isManager ? theme.palette.primary.soft : theme.palette.surface.subtle,
+  }),
+  // Goal setting v2: forms, cards, audit trail, tables
+  formGrid3: { display: 'grid', gap: { xs: 2, sm: 2.25 }, gridTemplateColumns: { xs: 'minmax(0, 1fr)', sm: 'repeat(3, minmax(0, 1fr))' } },
+  wrap: { wordBreak: 'break-word', overflowWrap: 'anywhere' },
+  reviewNote: (tone) => (theme) => ({ mt: 1.5, p: 1.25, borderRadius: theme.tokens.radius.sm, bgcolor: theme.palette[tone].soft, color: theme.palette.text.primary }),
+  changeBox: (theme) => ({
+    mt: 1.5, p: 1.5, borderRadius: theme.tokens.radius.sm, border: `1px dashed ${theme.palette.secondary.main}`,
+    bgcolor: theme.palette.secondary.soft, display: 'flex', flexDirection: 'column', gap: 0.5, color: theme.palette.text.primary,
+  }),
+  details: (theme) => ({ mt: 1.75, pt: 1.75, borderTop: `1px dashed ${theme.palette.surface.border}`, display: 'flex', flexDirection: 'column', gap: 1.75 }),
+  detailsBtn: { mr: 'auto', color: 'text.secondary' },
+  audit: { listStyle: 'none', m: 0, p: 0, display: 'flex', flexDirection: 'column', gap: 0 },
+  auditItem: () => (theme) => ({
+    display: 'flex', gap: 1.5, position: 'relative', pb: 1.75, pl: 0.25,
+    '&:not(:last-of-type)::before': { content: '""', position: 'absolute', left: 6, top: 16, bottom: 0, width: 2, bgcolor: theme.palette.surface.border },
+  }),
+  auditDot: (by) => (theme) => {
+    const tone = { employee: 'info', manager: 'primary', hr: 'secondary' }[by] || 'success';
+    return { width: 14, height: 14, mt: 0.4, borderRadius: '50%', flexShrink: 0, bgcolor: theme.palette[tone].main, boxShadow: `0 0 0 3px ${theme.palette[tone].soft}` };
+  },
+  tabs: (theme) => ({ minHeight: 40, borderBottom: `1px solid ${theme.palette.surface.border}`, '& .MuiTab-root': { minHeight: 40, textTransform: 'none', fontWeight: 600 } }),
+  toolbar: { display: 'flex', gap: 1.5, flexWrap: 'wrap', alignItems: 'center', mb: 1.5 },
+  search: { flex: { xs: '1 1 100%', sm: '1 1 260px' }, maxWidth: { sm: 360 } },
+  ownerSelect: { minWidth: { xs: '100%', sm: 220 } },
+  pastRow: (theme) => ({
+    display: 'flex', gap: 1.5, alignItems: { xs: 'flex-start', sm: 'center' }, flexDirection: { xs: 'column', sm: 'row' },
+    p: { xs: 1.5, sm: 2 }, borderRadius: theme.tokens.radius.md, border: `1px solid ${theme.palette.surface.border}`, bgcolor: theme.palette.surface.subtle,
+  }),
+  queueItem: { alignItems: { xs: 'flex-start', md: 'center' }, flexDirection: { xs: 'column', md: 'row' } },
+  queueActions: { display: 'flex', gap: 1, flexWrap: 'wrap', flexShrink: 0 },
+  credentials: { display: 'flex', flexDirection: 'column', gap: 0.5, mt: 0.5 },
+  selfNote: (theme) => ({ mt: 1.25, p: 1, borderRadius: theme.tokens.radius.sm, bgcolor: theme.palette.info.soft, color: theme.palette.text.primary }),
+  rateRow: { display: 'flex', gap: 1.5, alignItems: 'center', flexWrap: 'wrap', mt: 1.5 },
+  scorePreview: (theme) => ({
+    display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 1, flexWrap: 'wrap', p: 1.5,
+    borderRadius: theme.tokens.radius.md, bgcolor: theme.palette.primary.soft,
+  }),
+  list: { display: 'flex', flexDirection: 'column', gap: 1.5 },
+  item: (theme) => ({
+    p: { xs: 1.75, sm: 2.25 }, borderRadius: theme.tokens.radius.md, border: `1px solid ${theme.palette.surface.border}`,
+    bgcolor: theme.palette.surface.subtle, transition: `border-color ${theme.tokens.motion.fast}`,
+    '&:hover': { borderColor: theme.palette.primary.light },
+  }),
+  itemHead: { display: 'flex', gap: 1.5, alignItems: 'flex-start', justifyContent: 'space-between', flexWrap: 'wrap' },
+  itemTitle: { color: 'text.primary', wordBreak: 'break-word' },
+  pills: { display: 'flex', gap: 0.75, flexWrap: 'wrap', alignItems: 'center' },
+  meta: {
+    display: 'grid', gap: 1, mt: 1.5,
+    gridTemplateColumns: { xs: '1fr 1fr', md: 'repeat(4, minmax(0, 1fr))' },
+  },
+  metaCell: (theme) => ({ p: 1.25, borderRadius: theme.tokens.radius.sm, bgcolor: theme.palette.background.paper, border: `1px solid ${theme.palette.surface.border}`, minWidth: 0 }),
+  progressRow: { display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 44px', alignItems: 'center', gap: 1.5, mt: 1.75 },
+  progressBar: (tone) => (theme) => ({ height: 8, borderRadius: theme.tokens.radius.pill, '& .MuiLinearProgress-bar': { bgcolor: theme.palette[tone].main, borderRadius: theme.tokens.radius.pill } }),
+  actions: { display: 'flex', gap: 1, flexWrap: 'wrap', mt: 1.75, justifyContent: 'flex-end', '& .MuiButton-root': { minHeight: 32 }, '&:empty': { display: 'none' } },
+  dialogIcon: (theme) => ({ width: 40, height: 40, borderRadius: theme.tokens.radius.md, display: 'grid', placeItems: 'center', bgcolor: theme.palette.primary.soft, color: theme.palette.primary.main }),
+};
+
 export const notFound = {
   root: { minHeight: '60vh', display: 'grid', placeItems: 'center', textAlign: 'center', px: 2 },
   code: (theme) => ({ fontFamily: theme.tokens.fonts.heading, fontWeight: 800, fontSize: { xs: '4rem', md: '6rem' }, lineHeight: 1, background: theme.palette.brand.gradient, WebkitBackgroundClip: 'text', backgroundClip: 'text', WebkitTextFillColor: 'transparent' }),
