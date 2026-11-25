@@ -54,8 +54,8 @@ export const DEFAULT_REVIEW_SETTINGS = {
   visibility: 'Manager and employee',
   safeguardRequired: true,
   reminders: true,
-  // Optional HR/Admin final review of manager evaluations. Off = the manager evaluation is final.
-  hrReview: false,
+  // HR validation of manager evaluations is a required step of the appraisal workflow.
+  hrReview: true,
 };
 
 /* --------------------------- Goal setting ------------------------------ */

@@ -8,9 +8,10 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useCallback } from 'react';
 import * as api from '../../services/api.js';
 import { useAuth } from '../../context/AuthContext.jsx';
+import { registerCycles } from '../../data/cycles.js';
 
 export const EMPTY_WORKSPACE = {
-  projects: [], users: [], reviews: [], history: [], signals: [], notifications: [], settings: null, goals: [], goalPlans: [], people: [],
+  projects: [], users: [], reviews: [], history: [], signals: [], notifications: [], settings: null, goals: [], goalPlans: [], people: [], cycles: [],
 };
 
 export const queryKeys = {
@@ -50,10 +51,13 @@ export function useUpdateWorkspace() {
 }
 
 /* ----------------------------- Slice hooks ------------------------------ */
-const selectGoalData = (ws) => ({ goals: ws.goals, goalPlans: ws.goalPlans, users: ws.users, people: ws.people, settings: ws.settings });
+const selectGoalData = (ws) => ({ goals: ws.goals, goalPlans: ws.goalPlans, users: ws.users, people: ws.people, settings: ws.settings, cycles: ws.cycles || [] });
 
 /** Goals, plans, users and settings — everything the goal screens need. */
 export function useGoalData() {
   const query = useWorkspaceQuery(selectGoalData);
-  return { ...(query.data || selectGoalData(EMPTY_WORKSPACE)), query };
+  const data = query.data || selectGoalData(EMPTY_WORKSPACE);
+  // The shared workflow rules (goals.js) read cycle settings from this registry.
+  registerCycles(data.cycles);
+  return { ...data, query };
 }

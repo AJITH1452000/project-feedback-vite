@@ -302,8 +302,60 @@ export const settings = {
   }),
 };
 
+/** Appraisal cycles (HR): process flow, cycle cards, cycle form. */
+export const cycles = {
+  flow: {
+    display: 'grid', gap: { xs: 1, md: 1.25 }, alignItems: 'stretch',
+    gridTemplateColumns: { xs: 'minmax(0, 1fr)', md: 'repeat(3, minmax(0, 1fr))', xl: 'repeat(6, minmax(0, 1fr))' },
+  },
+  flowStep: (tone, active) => (theme) => ({
+    position: 'relative', p: { xs: 1.5, sm: 1.75 }, borderRadius: theme.tokens.radius.md, textAlign: 'center',
+    bgcolor: theme.palette[tone].soft, border: `1.5px solid ${active ? theme.palette[tone].main : 'transparent'}`,
+    display: 'flex', flexDirection: 'column', gap: 0.5, alignItems: 'center',
+  }),
+  flowNum: (tone) => (theme) => ({
+    width: 26, height: 26, borderRadius: '50%', display: 'grid', placeItems: 'center', fontSize: '0.75rem', fontWeight: 800,
+    bgcolor: theme.palette[tone].main, color: theme.palette[tone].contrastText,
+  }),
+  flowOwner: { color: 'text.secondary', fontWeight: 700, letterSpacing: '0.04em' },
+  flowTitle: { color: 'text.primary', lineHeight: 1.3 },
+  flowDesc: { color: 'text.secondary', lineHeight: 1.4 },
+  flowCount: (tone) => ({ color: `${tone}.main`, fontWeight: 700, mt: 'auto' }),
+  list: { display: 'flex', flexDirection: 'column', gap: 1.5 },
+  card: (theme) => ({
+    p: { xs: 1.75, sm: 2.25 }, borderRadius: theme.tokens.radius.lg, border: `1px solid ${theme.palette.surface.border}`,
+    bgcolor: theme.palette.surface.subtle, display: 'flex', flexDirection: 'column', gap: 1.5,
+  }),
+  cardHead: { display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 1.5, flexWrap: 'wrap' },
+  dates: { display: 'grid', gap: 1, gridTemplateColumns: { xs: 'repeat(2, minmax(0, 1fr))', md: 'repeat(4, minmax(0, 1fr))' } },
+  dateCell: (theme) => ({ p: 1.25, borderRadius: theme.tokens.radius.sm, bgcolor: theme.palette.background.paper, border: `1px solid ${theme.palette.surface.border}` }),
+  chips: { display: 'flex', flexWrap: 'wrap', gap: 0.75 },
+  progressRow: { display: 'flex', alignItems: 'center', gap: 1.25 },
+  progressBar: { flex: 1, height: 8 },
+  actions: {
+    display: 'flex', gap: 1, flexWrap: 'wrap', justifyContent: 'flex-end', pt: 1.5,
+    borderTop: 1, borderColor: 'surface.border', borderTopStyle: 'dashed',
+    '& .MuiButton-root': { width: { xs: '100%', sm: 'auto' } },
+  },
+  formSection: (theme) => ({
+    display: 'flex', flexDirection: 'column', gap: 2, p: { xs: 1.5, sm: 2 }, borderRadius: theme.tokens.radius.md,
+    border: `1px solid ${theme.palette.surface.border}`, bgcolor: theme.palette.surface.subtle,
+  }),
+  formGrid3: { display: 'grid', gap: 2, gridTemplateColumns: { xs: 'minmax(0, 1fr)', sm: 'repeat(3, minmax(0, 1fr))' } },
+  scaleGrid: { display: 'grid', gap: 1.25, gridTemplateColumns: { xs: 'minmax(0, 1fr)', sm: 'repeat(2, minmax(0, 1fr))' } },
+};
+
 export const goals = {
   back: { alignSelf: 'flex-start', mb: 1, ml: -1 },
+  statusHead: { display: 'flex', flexDirection: 'column', alignItems: { xs: 'flex-start', sm: 'flex-end' }, gap: 0.5 },
+  stepAlert: { mt: 2 },
+  cycleBar: (theme) => ({
+    display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: { xs: 1.5, md: 3 }, p: { xs: 1.5, sm: 2 },
+    borderRadius: theme.tokens.radius.lg, bgcolor: theme.palette.background.paper, border: `1px solid ${theme.palette.surface.border}`,
+    '& > :last-child': { ml: { md: 'auto' } },
+  }),
+  cycleItem: { display: 'flex', flexDirection: 'column', minWidth: 120 },
+  rowActions: { display: 'flex', gap: 0.75, justifyContent: 'flex-end', flexWrap: 'wrap' },
   stepper: { mt: 0.5, '& .MuiStepLabel-label': { fontSize: '0.8rem', fontWeight: 600 } },
   stageActions: {
     display: 'flex', gap: 1.25, flexWrap: 'wrap', alignItems: 'center', justifyContent: 'flex-end', mt: 2.5, pt: 2,

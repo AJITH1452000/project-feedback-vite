@@ -7,7 +7,8 @@ import Typography from '@mui/material/Typography';
 import { ChevronDown, ChevronUp, GitPullRequestArrow } from 'lucide-react';
 import { Pill, ScoreBadge, UserAvatar } from '../common/index.jsx';
 import { PRIORITY_TONE, STATUS_TONE, isActive } from '../../data/goals.js';
-import { daysUntil, formatDate, ratingLabel } from '../../data/selectors.js';
+import { scaleLabel } from '../../data/cycles.js';
+import { daysUntil, formatDate } from '../../data/selectors.js';
 import { text } from '../../styles/common.js';
 import { goals as s } from '../../styles/pages.js';
 import HistoryList from './HistoryList.jsx';
@@ -99,7 +100,7 @@ export default function GoalCard({ goal: g, owner, actions, showSelf, showManage
           )}
           {showManager && g.managerRating && (
             <Box sx={s.ratingCell}>
-              <Typography variant="caption" color="text.secondary">Manager rating · {ratingLabel(g.managerRating)}</Typography>
+              <Typography variant="caption" color="text.secondary">Manager rating · {scaleLabel(g.period, g.managerRating)}</Typography>
               <ScoreBadge value={g.managerRating} suffix=" / 5" />
               {g.managerComment && <Typography variant="body2">{g.managerComment}</Typography>}
               {g.improvement && <Typography variant="body2" color="text.secondary"><b>Improve:</b> {g.improvement}</Typography>}

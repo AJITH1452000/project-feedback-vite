@@ -145,7 +145,7 @@ workspaceRouter.put('/settings/review', requireRole('manager', 'hr'), route((req
     visibility: text(input.visibility, 60) || db.settings.visibility,
     safeguardRequired: Boolean(input.safeguardRequired),
     reminders: Boolean(input.reminders),
-    hrReview: Boolean(input.hrReview),
+    hrReview: true, // required step of the appraisal workflow
   };
   persist();
   toAll('settings:updated', db.settings);

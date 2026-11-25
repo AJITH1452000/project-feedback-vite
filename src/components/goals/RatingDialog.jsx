@@ -18,7 +18,7 @@ import { useGoalPlanAction } from '../../hooks/queries/goals.js';
 import { useToast } from '../../context/ToastContext.jsx';
 import { RATING_PRINCIPLES } from '../../data/constants.js';
 import { STATUS_TONE, isActive, weightedScore } from '../../data/goals.js';
-import { ratingLabel } from '../../data/selectors.js';
+import { scaleLabel } from '../../data/cycles.js';
 import { dialog, grid } from '../../styles/common.js';
 import { goals as s } from '../../styles/pages.js';
 import ProgressHistory from './ProgressHistory.jsx';
@@ -63,7 +63,7 @@ export default function RatingDialog({ open, onClose, mode, plan, goals, ownerNa
     setError('');
     planAction.mutate({ u: plan.u, period: plan.period, action: isSelf ? 'selfAssess' : 'evaluate', payload: { ratings, summary, improvement } }, {
       onSuccess: () => {
-        notify(isSelf ? 'Self-assessment submitted to your manager.' : hrReview ? 'Evaluation completed and sent for HR final review.' : 'Evaluation completed and shared with the employee.');
+        notify(isSelf ? 'Self-appraisal submitted to your manager.' : 'Evaluation completed and sent to HR for validation.');
         onClose();
       },
       onError: (err) => setError(err.message),
@@ -106,7 +106,7 @@ export default function RatingDialog({ open, onClose, mode, plan, goals, ownerNa
               {!isSelf && g.updates.length > 0 && <Box mt={1.25}><ProgressHistory updates={g.updates} max={2} /></Box>}
               <Box sx={s.rateRow}>
                 <FilterChips label={`Rating for ${g.title}`} value={value} onChange={(v) => setGoal(g.id, 'rating', v)} options={SCALE} />
-                <Typography variant="caption" color="text.secondary">{value ? ratingLabel(value) : 'Not rated'}</Typography>
+                <Typography variant="caption" color="text.secondary">{value ? scaleLabel(plan.period, value) : 'Not rated'}</Typography>
               </Box>
               <Box sx={isSelf ? undefined : grid.form2} mt={1.25}>
                 <TextField size="small" label={isSelf ? 'Achievement / evidence' : 'Feedback'} value={ratings[g.id]?.comment || ''} fullWidth
@@ -131,10 +131,10 @@ export default function RatingDialog({ open, onClose, mode, plan, goals, ownerNa
         <Box sx={s.scorePreview}>
           <Typography variant="subtitle2">Weighted {isSelf ? 'self' : 'manager'} score</Typography>
           {preview
-            ? <Box display="flex" gap={1} alignItems="center"><ScoreBadge value={preview} suffix=" / 5" /><Typography variant="caption" color="text.secondary">{ratingLabel(preview)}</Typography></Box>
+            ? <Box display="flex" gap={1} alignItems="center"><ScoreBadge value={preview} suffix=" / 5" /><Typography variant="caption" color="text.secondary">{scaleLabel(plan.period, preview)}</Typography></Box>
             : <Typography variant="caption" color="text.secondary">Rate every goal to see the score</Typography>}
         </Box>
-        {!isSelf && hrReview && <Alert severity="info">HR final review is enabled — HR will confirm or calibrate this score before it reaches the employee.</Alert>}
+        {!isSelf && <Alert severity="info">HR validates (and may calibrate) this score. The employee sees it after you hold the feedback discussion.</Alert>}
         {error && <Alert severity="error">{error}</Alert>}
       </DialogContent>
 

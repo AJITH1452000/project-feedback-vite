@@ -9,12 +9,14 @@ import Tab from '@mui/material/Tab';
 import Tabs from '@mui/material/Tabs';
 import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
-import { ArrowRight, ClipboardCheck, GitPullRequestArrow, Search, Star, Target, TrendingUp, Users } from 'lucide-react';
+import { ArrowRight, BadgeCheck, BellRing, CalendarRange, ClipboardCheck, GitPullRequestArrow, Handshake, Search, Star, Target, TrendingUp, Users } from 'lucide-react';
 import ResponsiveTable from '../../components/common/ResponsiveTable.jsx';
 import { EmptyState, FilterChips, PageHeader, Pill, ScoreBadge, SectionCard, StatCard, UserAvatar } from '../../components/common/index.jsx';
 import { useAuth } from '../../context/AuthContext.jsx';
 import { useGoalData } from '../../hooks/queries/workspace.js';
-import { GOAL_PERIODS } from '../../data/constants.js';
+import { cycleFor, isEligible, reminderFor } from '../../data/cycles.js';
+import { useRemindEmployee } from '../../hooks/queries/cycles.js';
+import { useToast } from '../../context/ToastContext.jsx';
 import {
   PRIORITY_TONE, STATUS_TONE, effectiveScore, getPlan, goalsFor, isActive, planPhase, totalWeight, weightedProgress,
 } from '../../data/goals.js';
@@ -30,31 +32,64 @@ const progressTone = (p) => (p >= 70 ? 'success' : p >= 40 ? 'info' : 'warning')
 export default function TeamGoals() {
   const navigate = useNavigate();
   const { user } = useAuth();
-  const { users, goals, goalPlans, settings } = useGoalData();
-  const hrReview = Boolean(settings?.hrReview);
-  const [period, setPeriod] = usePeriod();
+  const { users, people, goals, goalPlans } = useGoalData();
+  const isHr = user.role === 'hr';
+  const hrReview = true;
+  const [period, setPeriod, cycles] = usePeriod();
   const [tab, setTab] = useState('actions');
   const [query, setQuery] = useState('');
   const [status, setStatus] = useState('All');
   const [owner, setOwner] = useState('all');
+  const [managerFilter, setManagerFilter] = useState('all'); // HR only
+  const remind = useRemindEmployee();
+  const { notify } = useToast();
+  const [remindingAll, setRemindingAll] = useState(false);
 
-  // Direct reports only (the backend enforces the same reporting lines).
-  const team = useMemo(() => users.filter((u) => u.managerId === user.userId), [users, user.userId]);
+  // Manager: direct reports (the backend enforces the same reporting lines).
+  // HR: every employee eligible for the cycle, optionally narrowed to one manager's team.
+  const cycle = cycleFor(period);
+  const managers = useMemo(() => people.filter((p) => p.role === 'manager'), [people]);
+  const team = useMemo(() => (isHr
+    ? users.filter((u) => (!cycle || isEligible(cycle, u)) && (managerFilter === 'all' || u.managerId === managerFilter))
+    : users.filter((u) => u.managerId === user.userId)), [users, user.userId, isHr, cycle, managerFilter]);
+  const teamIds = useMemo(() => new Set(team.map((u) => u.id)), [team]);
   const rows = useMemo(() => team.map((u) => {
     const plan = getPlan(goalPlans, u.id, period);
     const list = goalsFor(goals, u.id, period);
-    return { id: u.id, user: u, plan, list, phase: planPhase(plan, list, hrReview), weight: totalWeight(list), progress: weightedProgress(list), score: effectiveScore(plan, hrReview) };
+    return { id: u.id, user: u, plan, list, phase: planPhase(plan, list), weight: totalWeight(list), progress: weightedProgress(list), score: effectiveScore(plan, hrReview) };
   }), [team, goals, goalPlans, period, hrReview]);
 
   const open = (u) => navigate(`/goals/${u}?period=${encodeURIComponent(period)}`);
-  const periodGoals = goals.filter((g) => g.period === period);
+  const periodGoals = goals.filter((g) => g.period === period && teamIds.has(g.u));
   const pendingGoals = periodGoals.filter((g) => g.status === 'Pending Approval');
   const changeRequests = periodGoals.filter((g) => g.change);
   const toEvaluate = rows.filter((r) => r.plan.stage === 'Self-assessed');
-  const actionCount = new Set([...pendingGoals.map((g) => g.u), ...changeRequests.map((g) => g.u)]).size + toEvaluate.length;
+  const toDiscuss = rows.filter((r) => r.plan.stage === 'Finalized');
+  const toValidate = rows.filter((r) => r.plan.stage === 'Evaluated');
+  const actionCount = isHr ? toValidate.length
+    : new Set([...pendingGoals.map((g) => g.u), ...changeRequests.map((g) => g.u)]).size + toEvaluate.length + toDiscuss.length;
+  const managerName = (id) => findUser(people, id).n;
+
+  // Employees with a step of their own to do (set goals, progress, self-appraisal, acknowledge).
+  const remindable = rows.filter((r) => reminderFor(r.phase.status, cycle));
+  const remindOne = (r) => remind.mutate({ u: r.id, period }, {
+    onSuccess: () => notify(`Reminder sent to ${r.user.n}.`),
+    onError: (err) => notify(err.message, 'error'),
+  });
+  async function remindAll() {
+    setRemindingAll(true);
+    const results = await Promise.allSettled(remindable.map((r) => remind.mutateAsync({ u: r.id, period })));
+    setRemindingAll(false);
+    const sent = results.filter((x) => x.status === 'fulfilled').length;
+    notify(sent === remindable.length ? `Reminder sent to ${sent} employee${sent === 1 ? '' : 's'}.` : `Sent ${sent} of ${remindable.length} reminders.`, sent === remindable.length ? 'success' : 'warning');
+  }
+  const sendingTo = (id) => remind.isPending && remind.variables?.u === id;
   const scored = rows.filter((r) => r.score !== null);
 
-  const queue = [
+  const queue = isHr ? toValidate.map((r) => ({
+    key: `v-${r.id}`, r, icon: BadgeCheck, tone: 'warning', label: 'HR validation',
+    detail: `Evaluated by ${managerName(r.user.managerId)} ${formatDate(r.plan.evaluatedAt)} · manager score ${r.plan.managerScore?.toFixed(2) ?? '—'}`, cta: 'Validate',
+  })) : [
     ...rows.filter((r) => r.list.some((g) => g.status === 'Pending Approval')).map((r) => ({
       key: `a-${r.id}`, r, icon: ClipboardCheck, tone: 'warning', label: 'Goal approval',
       detail: `${r.list.filter((g) => g.status === 'Pending Approval').length} goal(s) submitted · ${r.weight}% weightage`, cta: 'Review goals',
@@ -66,6 +101,10 @@ export default function TeamGoals() {
     ...toEvaluate.map((r) => ({
       key: `e-${r.id}`, r, icon: Star, tone: 'info', label: 'Performance evaluation',
       detail: `Self assessment submitted ${formatDate(r.plan.selfAt)}`, cta: 'Evaluate',
+    })),
+    ...toDiscuss.map((r) => ({
+      key: `d-${r.id}`, r, icon: Handshake, tone: 'primary', label: 'Feedback discussion',
+      detail: `HR validated ${formatDate(r.plan.finalizedAt)} · share the feedback`, cta: 'Record discussion',
     })),
   ];
 
@@ -116,7 +155,9 @@ export default function TeamGoals() {
         </Box>
       ),
     },
-    { key: 'phase', label: 'Workflow stage', sortValue: (r) => r.phase.step, render: (r) => <Pill tone={r.phase.tone} dot>{r.phase.phase}</Pill> },
+    { key: 'phase', label: 'Appraisal status', sortValue: (r) => r.phase.step, render: (r) => <Pill tone={r.phase.tone} dot>{r.phase.status}</Pill> },
+    ...(isHr ? [{ key: 'mgr', label: 'Manager', sortValue: (r) => managerName(r.user.managerId), render: (r) => managerName(r.user.managerId) }] : []),
+    { key: 'next', label: 'Next action by', sortValue: (r) => r.phase.nextBy, render: (r) => r.phase.nextBy },
     { key: 'goals', label: 'Goals', sortValue: (r) => r.list.length, render: (r) => `${r.list.filter(isActive).length} / ${r.list.filter((g) => g.status !== 'Rejected').length} approved` },
     { key: 'weight', label: 'Weightage', sortValue: (r) => r.weight, render: (r) => <Pill tone={r.weight === 100 ? 'success' : r.weight ? 'warning' : 'neutral'}>{r.weight}%</Pill> },
     {
@@ -126,32 +167,58 @@ export default function TeamGoals() {
         : '—'),
     },
     { key: 'score', label: 'Rating', sortValue: (r) => r.score ?? -1, render: (r) => (r.score !== null ? <ScoreBadge value={r.score} suffix=" / 5" /> : '—') },
-    { key: 'open', label: '', align: 'right', render: (r) => <Button size="small" variant="outlined" endIcon={<ArrowRight size={14} />} onClick={() => open(r.id)}>Open</Button> },
+    {
+      key: 'open', label: '', align: 'right',
+      render: (r) => (
+        <Box sx={s.rowActions}>
+          {reminderFor(r.phase.status, cycle) && (
+            <Button size="small" startIcon={<BellRing size={14} />} disabled={sendingTo(r.id) || remindingAll} onClick={() => remindOne(r)}
+              title={r.plan.lastReminderAt ? `Last reminded ${formatDate(r.plan.lastReminderAt)}` : 'Not reminded yet'}>
+              Remind
+            </Button>
+          )}
+          <Button size="small" variant="outlined" endIcon={<ArrowRight size={14} />} onClick={() => open(r.id)}>Open</Button>
+        </Box>
+      ),
+    },
   ];
 
   return (
     <Box sx={page.root}>
-      <PageHeader eyebrow="Performance management" title="Team goals"
-        description="Approve the goals your team submits, follow their progress, and evaluate performance at the end of the review period." />
+      <PageHeader eyebrow={isHr ? 'HR / Admin · performance management' : 'Performance management'} title={isHr ? 'All goals' : 'Team goals'}
+        description={isHr
+          ? 'Every employee\'s goals and appraisal status across all managers. Managers approve and evaluate; HR monitors and validates.'
+          : 'Approve the goals your team submits, follow their progress, and evaluate performance at the end of the review period.'}
+        actions={isHr && (
+          <TextField select size="small" label="Reporting manager" value={managerFilter} onChange={(e) => { setManagerFilter(e.target.value === 'all' ? 'all' : Number(e.target.value)); setOwner('all'); }} sx={s.ownerSelect}>
+            <MenuItem value="all">All managers</MenuItem>
+            {managers.map((m) => <MenuItem key={m.id} value={m.id}>{m.n}</MenuItem>)}
+          </TextField>
+        )} />
 
       <Box sx={page.stack}>
-        <FilterChips label="Review period" value={period} onChange={setPeriod} options={GOAL_PERIODS} />
+        {!period ? (
+          <EmptyState icon={CalendarRange} title="No appraisal cycle is open" description="Goal setting opens when HR publishes an appraisal cycle." />
+        ) : (
+        <FilterChips label="Appraisal cycle" value={period} onChange={setPeriod}
+          options={cycles.map((c) => ({ value: c.period, label: c.status === 'Open' ? c.period : `${c.period} · ${c.status}` }))} />
+        )}
 
         <Box sx={grid.kpis}>
-          <StatCard label="Needs your action" value={actionCount} icon={ClipboardCheck} tone={actionCount ? 'warning' : 'success'} footer={`${pendingGoals.length} goals · ${changeRequests.length} changes · ${toEvaluate.length} evaluations`} />
+          <StatCard label="Needs your action" value={actionCount} icon={ClipboardCheck} tone={actionCount ? 'warning' : 'success'} footer={isHr ? `${rows.filter((r) => r.phase.waitingOn === 'manager').length} waiting on managers` : `${pendingGoals.length} goals · ${changeRequests.length} changes · ${toEvaluate.length} evaluations · ${toDiscuss.length} discussions`} />
           <StatCard label="Active goals" value={periodGoals.filter(isActive).length} icon={Target} tone="primary" footer={`${periodGoals.filter((g) => g.status === 'Rejected').length} rejected this period`} />
-          <StatCard label="Team progress" value={`${Math.round(avg(rows.filter((r) => r.list.some(isActive)).map((r) => r.progress)))}%`} icon={TrendingUp} tone="info" footer="Weighted, across active plans" />
+          <StatCard label={isHr ? 'Overall progress' : 'Team progress'} value={`${Math.round(avg(rows.filter((r) => r.list.some(isActive)).map((r) => r.progress)))}%`} icon={TrendingUp} tone="info" footer="Weighted, across active plans" />
           <StatCard label="Average rating" value={scored.length ? f1(avg(scored.map((r) => r.score))) : '—'} scale="/ 5" icon={Users} tone="success" footer={`${scored.length} of ${rows.length} rated`} />
         </Box>
 
         <Tabs value={tab} onChange={(_, v) => setTab(v)} variant="scrollable" allowScrollButtonsMobile sx={s.tabs}>
           <Tab value="actions" label={`Pending actions (${queue.length})`} />
-          <Tab value="goals" label={`All team goals (${periodGoals.length})`} />
+          <Tab value="goals" label={`${isHr ? 'All goals' : 'All team goals'} (${periodGoals.length})`} />
           <Tab value="people" label="Employee progress" />
         </Tabs>
 
         {tab === 'actions' && (
-          <SectionCard title="Pending actions" subtitle="Goal approvals, change requests and evaluations waiting on you." icon={ClipboardCheck}>
+          <SectionCard title="Pending actions" subtitle={isHr ? 'Manager evaluations waiting for HR validation.' : 'Goal approvals, change requests, evaluations and feedback discussions waiting on you.'} icon={ClipboardCheck}>
             {queue.length ? (
               <Box sx={card.body}>
                 {queue.map((q) => (
@@ -168,12 +235,12 @@ export default function TeamGoals() {
                   </Box>
                 ))}
               </Box>
-            ) : <EmptyState icon={ClipboardCheck} title="You're all caught up" description="Submitted goals, change requests and self assessments will appear here." />}
+            ) : <EmptyState icon={ClipboardCheck} title="You're all caught up" description={isHr ? 'Evaluations completed by managers will appear here for validation.' : 'Submitted goals, change requests and self assessments will appear here.'} />}
           </SectionCard>
         )}
 
         {tab === 'goals' && (
-          <SectionCard title="All team goals" subtitle={`${period} · filter by status to see pending, approved or rejected goals.`} icon={Target}>
+          <SectionCard title={isHr ? 'All goals' : 'All team goals'} subtitle={`${period} · filter by status to see pending, approved or rejected goals.`} icon={Target}>
             <Box sx={s.toolbar}>
               <TextField size="small" placeholder="Search goals or people" value={query} onChange={(e) => setQuery(e.target.value)} sx={s.search}
                 InputProps={{ startAdornment: <InputAdornment position="start"><Search size={16} /></InputAdornment> }} />
@@ -191,7 +258,12 @@ export default function TeamGoals() {
         )}
 
         {tab === 'people' && (
-          <SectionCard title="Employee progress" subtitle="Each employee's plan for the period." icon={Users}>
+          <SectionCard title="Employee progress" subtitle="Each employee's plan for the period. Remind anyone whose next step is theirs." icon={Users}
+            action={remindable.length > 0 && (
+              <Button size="small" variant="contained" startIcon={<BellRing size={15} />} disabled={remindingAll} onClick={remindAll}>
+                {remindingAll ? 'Sending…' : `Remind all pending (${remindable.length})`}
+              </Button>
+            )}>
             <ResponsiveTable columns={peopleColumns} rows={rows} pageSize={10} defaultSort={{ key: 'phase', dir: 'asc' }} />
           </SectionCard>
         )}

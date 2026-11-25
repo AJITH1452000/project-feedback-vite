@@ -1,4 +1,4 @@
-import { BadgeCheck, BarChart3, FolderKanban, LayoutDashboard, MessageSquareText, Settings, ShieldAlert, Target, UserCog, UserRound } from 'lucide-react';
+import { BadgeCheck, BarChart3, CalendarRange, FolderKanban, LayoutDashboard, MessageSquareText, Settings, ShieldAlert, Target, UserCog, UserRound } from 'lucide-react';
 
 /** Route + navigation map. `roles` controls who sees each entry (backend must enforce too). */
 export const NAV_SECTIONS = [
@@ -11,7 +11,8 @@ export const NAV_SECTIONS = [
       { to: '/people', label: 'People & skills', icon: ShieldAlert, roles: ['manager'], title: 'People & skills risk', subtitle: 'Signals that protect delivery timelines and staffing.' },
       { to: '/reports', label: 'Reports', icon: BarChart3, roles: ['manager'], title: 'Reports & analytics', subtitle: 'Distributions, team trends and audit records.' },
       { to: '/me', label: 'My performance', icon: UserRound, roles: ['employee'], title: 'My performance', subtitle: 'Feedback shared by managers and project leaders.' },
-      { to: '/goals', label: 'Goals', icon: Target, roles: ['manager', 'employee'], title: 'Performance goals', subtitle: 'Goal setting, approval, progress tracking and evaluation.' },
+      { to: '/goals', label: 'Goals', icon: Target, roles: ['manager', 'employee', 'hr'], title: 'Performance goals', subtitle: 'Goal setting, approval, progress tracking and evaluation.' },
+      { to: '/cycles', label: 'Appraisal cycles', icon: CalendarRange, roles: ['hr'], title: 'Appraisal cycles', subtitle: 'Initiate cycles, configure the goal framework and track the process.' },
       { to: '/hr-review', label: 'Performance review', icon: BadgeCheck, roles: ['hr'], title: 'Performance review', subtitle: 'Employee and department performance, final reviews and reports.' },
     ],
   },

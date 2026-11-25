@@ -1,6 +1,5 @@
 import { useMemo, useState } from 'react';
 import { Link as RouterLink, useNavigate } from 'react-router-dom';
-import Alert from '@mui/material/Alert';
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
 import LinearProgress from '@mui/material/LinearProgress';
@@ -9,7 +8,7 @@ import Tab from '@mui/material/Tab';
 import Tabs from '@mui/material/Tabs';
 import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
-import { ArrowRight, BadgeCheck, Building2, CalendarRange, Download, RotateCcw, Star, Target, Users } from 'lucide-react';
+import { ArrowRight, BadgeCheck, Building2, CalendarRange, Download, ListChecks, RotateCcw, Star, Target, Users } from 'lucide-react';
 import FinalizeDialog from '../../components/goals/FinalizeDialog.jsx';
 import NoteDialog from '../../components/goals/NoteDialog.jsx';
 import ResponsiveTable from '../../components/common/ResponsiveTable.jsx';
@@ -17,41 +16,44 @@ import { EmptyState, FilterChips, PageHeader, Pill, ScoreBadge, SectionCard, Sta
 import { useGoalPlanAction } from '../../hooks/queries/goals.js';
 import { useGoalData } from '../../hooks/queries/workspace.js';
 import { useToast } from '../../context/ToastContext.jsx';
-import { GOAL_PERIOD_RANGES, GOAL_PERIODS } from '../../data/constants.js';
+import { APPRAISAL_STATUSES, cycleFor, isEligible } from '../../data/cycles.js';
 import { effectiveScore, getPlan, goalsFor, isActive, planPhase, totalWeight, weightedProgress } from '../../data/goals.js';
-import { avg, downloadCsv, f1, formatDate, ratingLabel } from '../../data/selectors.js';
+import { avg, downloadCsv, f1, formatDate } from '../../data/selectors.js';
+import { scaleLabel } from '../../data/cycles.js';
 import { card, grid, page, text } from '../../styles/common.js';
 import { goals as s } from '../../styles/pages.js';
 import usePeriod from '../goals/usePeriod.js';
 
 const progressTone = (p) => (p >= 70 ? 'success' : p >= 40 ? 'info' : 'warning');
 
-/** HR / Admin: monitor every employee and department; final review only when the company enables it. */
+/** HR / Admin: monitor every employee and department, validate manager evaluations, track the workflow status of every appraisal. */
 export default function HrReview() {
   const navigate = useNavigate();
-  const { users, goals, goalPlans, settings } = useGoalData();
+  const { users, goals, goalPlans } = useGoalData();
   const planMutation = useGoalPlanAction();
   const { notify } = useToast();
-  const hrReview = Boolean(settings?.hrReview);
-  const [period, setPeriod] = usePeriod();
-  const [tabState, setTab] = useState(hrReview ? 'queue' : 'employees');
-  const tab = !hrReview && tabState === 'queue' ? 'employees' : tabState;
+  const hrReview = true; // HR validation is a required step
+  const [period, setPeriod, cycles] = usePeriod();
+  const cycle = cycleFor(period);
+  const [tab, setTab] = useState('queue');
   const [dept, setDept] = useState('all');
   const [finalizing, setFinalizing] = useState(null);
   const [returning, setReturning] = useState(null);
 
-  const rows = useMemo(() => users.map((u) => {
+  // Only employees eligible for the selected cycle take part in it.
+  const rows = useMemo(() => users.filter((u) => !cycle || isEligible(cycle, u)).map((u) => {
     const plan = getPlan(goalPlans, u.id, period);
     const list = goalsFor(goals, u.id, period);
     return {
-      id: u.id, user: u, dept: u.dept || 'Other', plan, list, phase: planPhase(plan, list, hrReview),
+      id: u.id, user: u, dept: u.dept || 'Other', plan, list, phase: planPhase(plan, list),
       weight: totalWeight(list), progress: weightedProgress(list), managerScore: plan.managerScore ?? null, score: effectiveScore(plan, hrReview),
     };
-  }), [users, goals, goalPlans, period, hrReview]);
+  }), [users, goals, goalPlans, period, hrReview, cycle]);
 
   const filtered = rows.filter((r) => dept === 'all' || r.dept === dept);
   const queue = rows.filter((r) => r.plan.stage === 'Evaluated');
-  const evaluated = rows.filter((r) => ['Evaluated', 'Finalized', 'Acknowledged'].includes(r.plan.stage));
+  const evaluated = rows.filter((r) => ['Evaluated', 'Finalized', 'Discussed', 'Acknowledged'].includes(r.plan.stage));
+  const statusCounts = APPRAISAL_STATUSES.map((s) => ({ ...s, id: s.status, count: rows.filter((r) => r.phase.status === s.status).length }));
   const scored = rows.filter((r) => r.score !== null);
   const departments = [...new Set(rows.map((r) => r.dept))].sort();
   const deptStats = departments.map((d) => {
@@ -62,15 +64,15 @@ export default function HrReview() {
       id: d, dept: d, people: inDept.length, goals: inDept.reduce((n, r) => n + r.list.filter((g) => g.status !== 'Rejected').length, 0),
       progress: active.length ? Math.round(avg(active.map((r) => r.progress))) : null,
       score: rated.length ? avg(rated.map((r) => r.score)) : null,
-      completed: inDept.filter((r) => ['Evaluated', 'Finalized', 'Acknowledged'].includes(r.plan.stage)).length,
+      completed: inDept.filter((r) => r.plan.stage === 'Acknowledged').length,
     };
   });
 
   const exportCsv = () => {
     downloadCsv([
-      ['Employee', 'Title', 'Department', 'Period', 'Workflow stage', 'Goals', 'Weightage %', 'Progress %', 'Manager score', 'Final score', 'Rating'],
-      ...filtered.map((r) => [r.user.n, r.user.t, r.dept, period, r.phase.phase, r.list.filter((g) => g.status !== 'Rejected').length, r.weight, r.progress,
-        r.managerScore?.toFixed(2) ?? '', r.score?.toFixed(2) ?? '', r.score !== null ? ratingLabel(r.score) : '']),
+      ['Employee', 'Title', 'Department', 'Appraisal cycle', 'Status', 'Next action by', 'Goals', 'Weightage %', 'Progress %', 'Manager score', 'Final score', 'Rating'],
+      ...filtered.map((r) => [r.user.n, r.user.t, r.dept, period, r.phase.status, r.phase.nextBy, r.list.filter((g) => g.status !== 'Rejected').length, r.weight, r.progress,
+        r.managerScore?.toFixed(2) ?? '', r.score?.toFixed(2) ?? '', r.score !== null ? scaleLabel(period, r.score) : '']),
     ], `performance-${period.replace(/\s+/g, '-').toLowerCase()}.csv`);
     notify('Performance report downloaded.');
   };
@@ -86,7 +88,8 @@ export default function HrReview() {
       ),
     },
     { key: 'dept', label: 'Department', sortValue: (r) => r.dept, render: (r) => r.dept },
-    { key: 'phase', label: 'Stage', sortValue: (r) => r.phase.step, render: (r) => <Pill tone={r.phase.tone} dot>{r.phase.phase}</Pill> },
+    { key: 'phase', label: 'Status', sortValue: (r) => r.phase.step, render: (r) => <Pill tone={r.phase.tone} dot>{r.phase.status}</Pill> },
+    { key: 'next', label: 'Next action by', sortValue: (r) => r.phase.nextBy, render: (r) => r.phase.nextBy },
     { key: 'weight', label: 'Weightage', sortValue: (r) => r.weight, render: (r) => `${r.weight}%` },
     {
       key: 'progress', label: 'Progress', sortValue: (r) => r.progress,
@@ -105,7 +108,7 @@ export default function HrReview() {
       key: 'progress', label: 'Avg progress', sortValue: (d) => d.progress ?? -1,
       render: (d) => (d.progress !== null ? <Box sx={s.miniProgress}><LinearProgress variant="determinate" value={d.progress} sx={s.progressBar(progressTone(d.progress))} /><Typography variant="caption" fontWeight={700}>{d.progress}%</Typography></Box> : '—'),
     },
-    { key: 'completed', label: 'Evaluated', sortValue: (d) => d.completed, render: (d) => `${d.completed} / ${d.people}` },
+    { key: 'completed', label: 'Completed', sortValue: (d) => d.completed, render: (d) => `${d.completed} / ${d.people}` },
     { key: 'score', label: 'Avg rating', sortValue: (d) => d.score ?? -1, render: (d) => (d.score !== null ? <ScoreBadge value={d.score} suffix=" / 5" /> : '—') },
   ];
 
@@ -116,33 +119,33 @@ export default function HrReview() {
         actions={<Button variant="outlined" startIcon={<Download size={16} />} onClick={exportCsv}>Export report</Button>} />
 
       <Box sx={page.stack}>
-        <FilterChips label="Review period" value={period} onChange={setPeriod} options={GOAL_PERIODS} />
-
-        {!hrReview && (
-          <Alert severity="info" action={<Button component={RouterLink} to="/settings" size="small" color="inherit">Settings</Button>}>
-            HR final review is <b>off</b> for this company — manager evaluations are final. You can still monitor progress and export reports.
-          </Alert>
+        {!period ? (
+          <EmptyState icon={CalendarRange} title="No appraisal cycle yet" description="Start the appraisal process by creating and publishing a cycle."
+            action={<Button variant="contained" component={RouterLink} to="/cycles">Appraisal cycles</Button>} />
+        ) : (
+          <FilterChips label="Appraisal cycle" value={period} onChange={setPeriod}
+            options={cycles.map((c) => ({ value: c.period, label: `${c.period} · ${c.status}` }))} />
         )}
 
         <Box sx={grid.kpis}>
           <StatCard label="Employees" value={rows.length} icon={Users} tone="primary" footer={`${departments.length} departments`} />
           <StatCard label="Goals approved" value={rows.reduce((n, r) => n + r.list.filter(isActive).length, 0)} icon={Target} tone="info"
             footer={`${goals.filter((g) => g.period === period && g.status === 'Pending Approval').length} awaiting manager approval`} />
-          <StatCard label={hrReview ? 'Awaiting HR review' : 'Evaluations done'} value={hrReview ? queue.length : evaluated.length} icon={BadgeCheck}
-            tone={hrReview && queue.length ? 'warning' : 'success'} footer={hrReview ? `${evaluated.length} evaluated by managers` : `of ${rows.length} employees`} />
+          <StatCard label="HR review pending" value={queue.length} icon={BadgeCheck}
+            tone={queue.length ? 'warning' : 'success'} footer={`${evaluated.length} evaluated by managers`} />
           <StatCard label="Average final rating" value={scored.length ? f1(avg(scored.map((r) => r.score))) : '—'} scale="/ 5" icon={Star} tone="success"
-            footer={scored.length ? ratingLabel(avg(scored.map((r) => r.score))) : 'No final ratings yet'} />
+            footer={scored.length ? scaleLabel(period, avg(scored.map((r) => r.score))) : 'No final ratings yet'} />
         </Box>
 
         <Tabs value={tab} onChange={(_, v) => setTab(v)} variant="scrollable" allowScrollButtonsMobile sx={s.tabs}>
-          {hrReview && <Tab value="queue" label={`Final review (${queue.length})`} />}
+          <Tab value="queue" label={`HR validation (${queue.length})`} />
+          <Tab value="status" label="Workflow status" />
           <Tab value="employees" label="Employee performance" />
           <Tab value="departments" label="Department performance" />
-          <Tab value="cycles" label="Review cycles" />
         </Tabs>
 
-        {tab === 'queue' && hrReview && (
-          <SectionCard title="Final review & approval" subtitle="Manager assessments waiting for HR. Confirm the score, calibrate it with a reason, or return it." icon={BadgeCheck}>
+        {tab === 'queue' && (
+          <SectionCard title="HR validation" subtitle="Manager evaluations waiting for HR. Confirm the score, calibrate it with a reason, or return it. The manager then holds the feedback discussion." icon={BadgeCheck}>
             {queue.length ? (
               <Box sx={card.body}>
                 {queue.map((r) => (
@@ -151,7 +154,7 @@ export default function HrReview() {
                     <Box flex={1} minWidth={0}>
                       <Typography variant="subtitle2">{r.user.n} · {r.dept}</Typography>
                       <Typography variant="caption" color="text.secondary" component="div">
-                        Manager score {r.managerScore?.toFixed(2)} ({ratingLabel(r.managerScore)}) · evaluated {formatDate(r.plan.evaluatedAt)}
+                        Manager score {r.managerScore?.toFixed(2)} ({scaleLabel(period, r.managerScore)}) · evaluated {formatDate(r.plan.evaluatedAt)}
                       </Typography>
                       {r.plan.managerSummary && <Typography variant="body2" color="text.secondary" sx={s.wrap}>{r.plan.managerSummary}</Typography>}
                     </Box>
@@ -185,29 +188,24 @@ export default function HrReview() {
           </SectionCard>
         )}
 
-        {tab === 'cycles' && (
-          <SectionCard title="Review cycle management" subtitle="Review periods and how far each one has progressed." icon={CalendarRange}>
-            <Box sx={s.list}>
-              {GOAL_PERIODS.map((p) => {
-                const plans = goalPlans.filter((x) => x.period === p);
-                const closed = plans.filter((x) => x.stage === 'Acknowledged').length;
-                const withGoals = new Set(goals.filter((g) => g.period === p).map((g) => g.u)).size;
-                return (
-                  <Box key={p} sx={s.pastRow}>
-                    <Box flex={1} minWidth={0}>
-                      <Typography variant="subtitle1">{p}</Typography>
-                      <Typography variant="caption" color="text.secondary">{formatDate(GOAL_PERIOD_RANGES[p].start)} – {formatDate(GOAL_PERIOD_RANGES[p].end)}</Typography>
-                    </Box>
-                    <Typography variant="caption" color="text.secondary">{withGoals} with goals · {closed} closed</Typography>
-                    <Pill tone={p === period ? 'primary' : closed && closed === withGoals ? 'success' : 'neutral'}>{p === period ? 'Viewing' : closed && closed === withGoals ? 'Closed' : 'Open'}</Pill>
-                    <Button size="small" variant="outlined" onClick={() => setPeriod(p)}>View</Button>
-                  </Box>
-                );
-              })}
-            </Box>
-            <Typography variant="caption" color="text.secondary" display="block" mt={2}>
-              HR final review: <b>{hrReview ? 'On' : 'Off'}</b> — change it in Settings → Review workflow.
-            </Typography>
+        {tab === 'status' && (
+          <SectionCard title="Detailed workflow with statuses" subtitle={`${period} · where every appraisal stands and who acts next`} icon={ListChecks}
+            action={<Button size="small" component={RouterLink} to="/cycles" endIcon={<ArrowRight size={14} />}>Manage cycles</Button>}>
+            <ResponsiveTable
+              getKey={(x) => x.status}
+              rows={statusCounts}
+              columns={[
+                { key: 'stage', label: 'Stage', primary: true, render: (x) => <Typography variant="subtitle2">{x.stage}</Typography> },
+                { key: 'status', label: 'Status', render: (x) => <Pill tone={x.tone} dot>{x.status}</Pill> },
+                { key: 'next', label: 'Next action by', render: (x) => x.nextBy },
+                { key: 'count', label: 'Employees', align: 'right', render: (x) => (x.count ? <b>{x.count}</b> : <Typography variant="caption" color="text.secondary">0</Typography>) },
+              ]}
+            />
+            {cycle && (
+              <Typography variant="caption" color="text.secondary" display="block" mt={2}>
+                Cycle {cycle.period} is <b>{cycle.status}</b> · {formatDate(cycle.start)} – {formatDate(cycle.end)} · {cycle.depts?.length ? cycle.depts.join(', ') : 'all departments'}
+              </Typography>
+            )}
           </SectionCard>
         )}
       </Box>

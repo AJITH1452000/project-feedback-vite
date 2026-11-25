@@ -4,8 +4,10 @@
  * Validation rules are imported from src/data/goals.js so browser and server agree exactly.
  */
 import { Router } from 'express';
-import { GOAL_CATEGORIES, GOAL_PRIORITIES, GOAL_RULES, TRACKING_STATUSES } from '../../src/data/constants.js';
+import { GOAL_PRIORITIES, TRACKING_STATUSES } from '../../src/data/constants.js';
+import { cycleFor, frameworkFor, isEligible, reminderFor, rulesFor } from '../../src/data/cycles.js';
 import {
+  appraisalStatus as planPhaseStatus,
   EMPLOYEE_DELETABLE, EMPLOYEE_EDITABLE, countsTowardWeight, goalProblems, goalsFor, isActive, planChecks, planId, selfAssessmentBlocker, weightedScore,
 } from '../../src/data/goals.js';
 import { requireAuth } from '../auth.js';
@@ -37,6 +39,17 @@ function assertRole(user, role) {
   if (user.role !== role) throw new HttpError(403, `Only the ${role === 'hr' ? 'HR/Admin' : role} can do this.`);
 }
 
+/** Every write needs a published (Open) cycle the employee is eligible for. */
+function assertCycleOpen(period, employeeId) {
+  const cycle = cycleFor(period);
+  if (!cycle) throw new HttpError(404, `There is no appraisal cycle called "${period}".`);
+  if (cycle.status === 'Draft') throw new HttpError(409, `The ${period} appraisal cycle has not been published by HR yet.`);
+  if (cycle.status === 'Closed') throw new HttpError(409, `The ${period} appraisal cycle is closed — it is read-only now.`);
+  const employee = userById(employeeId);
+  if (employee && !isEligible(cycle, employee)) throw new HttpError(403, `${employee.name} is not eligible for the ${period} cycle.`);
+  return cycle;
+}
+
 const entry = (user, action, note = '') => ({ id: nextId('history_entries'), d: todayIso(), by: user.role, actor: user.name, action, note: text(note) });
 const withHistory = (record, user, action, note) => ({ ...record, history: [...(record.history || []), entry(user, action, note)] });
 
@@ -50,12 +63,33 @@ function findGoal(id) {
 }
 const audience = (u) => [u, userById(u)?.managerId, ...hrIds()];
 
-/** Push goal/plan changes to the employee, their manager and HR. */
+/*
+ * The manager's ratings stay private until HR has validated them and the manager has
+ * held the feedback discussion. Employees get redacted copies before that.
+ */
+const sharedWithEmployee = (stage) => ['Discussed', 'Acknowledged'].includes(stage);
+const PRIVATE_ACTIONS = /^(Manager evaluation|Finalized|Returned to manager)/;
+function employeePlan(plan) {
+  if (sharedWithEmployee(plan.stage)) return plan;
+  return {
+    ...plan, managerScore: null, finalScore: null, managerSummary: '', managerImprovement: '', hrNote: '',
+    history: (plan.history || []).map((e) => (PRIVATE_ACTIONS.test(e.action) ? { ...e, note: '' } : e)),
+  };
+}
+function employeeGoal(goal) {
+  if (sharedWithEmployee(getPlan(goal.u, goal.period).stage)) return goal;
+  return { ...goal, managerRating: null, managerComment: '', improvement: '' };
+}
+const forViewer = (user, { plan, goals }) => (user.role === 'employee'
+  ? { plan: plan && employeePlan(plan), goals: goals && goals.map(employeeGoal) }
+  : { plan, goals });
+
+/** Push goal/plan changes: full copies to the manager and HR, redacted copies to the employee. */
 function publish(u, { goals = [], plan = null, deleted = null }) {
-  const to = audience(u);
-  goals.forEach((g) => toUsers(to, 'goal:updated', g));
-  if (plan) toUsers(to, 'goalPlan:updated', plan);
-  if (deleted) toUsers(to, 'goal:deleted', { id: deleted });
+  const staff = audience(u).filter((id) => id !== u);
+  goals.forEach((g) => { toUsers(staff, 'goal:updated', g); toUsers([u], 'goal:updated', employeeGoal(g)); });
+  if (plan) { toUsers(staff, 'goalPlan:updated', plan); toUsers([u], 'goalPlan:updated', employeePlan(plan)); }
+  if (deleted) toUsers(audience(u), 'goal:deleted', { id: deleted });
 }
 
 const GOAL_FIELDS = ['title', 'category', 'desc', 'metric', 'target', 'priority', 'weight', 'start', 'due', 'notes'];
@@ -72,12 +106,13 @@ function validateGoal(goal, { isNew = false } = {}) {
   const problems = goalProblems(goal);
   const [field] = Object.keys(problems);
   if (field) throw new HttpError(400, `${field === 'metric' ? 'KPI' : field[0].toUpperCase() + field.slice(1)}: ${problems[field]}`);
-  if (!GOAL_CATEGORIES.includes(goal.category)) throw new HttpError(400, 'Choose a valid goal category.');
+  if (!frameworkFor(goal.period).categories.includes(goal.category)) throw new HttpError(400, "Choose a goal category from this cycle's framework.");
   if (!GOAL_PRIORITIES.includes(goal.priority)) throw new HttpError(400, 'Choose a priority.');
   const others = getDb().goals.filter((x) => x.u === goal.u && x.period === goal.period && x.id !== goal.id && countsTowardWeight(x));
-  if (isNew && others.length >= GOAL_RULES.maxGoals) throw new HttpError(400, `A plan can have at most ${GOAL_RULES.maxGoals} goals.`);
+  const rules = rulesFor(goal.period);
+  if (isNew && others.length >= rules.maxGoals) throw new HttpError(400, `A plan can have at most ${rules.maxGoals} goals.`);
   const used = others.reduce((sum, x) => sum + x.weight, 0);
-  if (used + goal.weight > GOAL_RULES.totalWeight) throw new HttpError(400, `Total weightage would be ${used + goal.weight}%. Only ${GOAL_RULES.totalWeight - used}% is left.`);
+  if (used + goal.weight > rules.totalWeight) throw new HttpError(400, `Total weightage would be ${used + goal.weight}%. Only ${rules.totalWeight - used}% is left.`);
 }
 
 function assertGoalSetting(goal) {
@@ -92,17 +127,25 @@ function assertPlanReady(u, period, replace) {
 }
 
 /* -------------------------------- Reads --------------------------------- */
-goalsRouter.get('/goals', route((req, res) => res.json(getDb().goals.filter((g) => canSee(req.user, g.u)))));
-goalsRouter.get('/goal-plans', route((req, res) => res.json(getDb().goalPlans.filter((p) => canSee(req.user, p.u)))));
+const published = (user, period) => user.role === 'hr' || cycleFor(period)?.status !== 'Draft';
+goalsRouter.get('/goals', route((req, res) => {
+  const list = getDb().goals.filter((g) => canSee(req.user, g.u) && published(req.user, g.period));
+  res.json(req.user.role === 'employee' ? list.map(employeeGoal) : list);
+}));
+goalsRouter.get('/goal-plans', route((req, res) => {
+  const list = getDb().goalPlans.filter((p) => canSee(req.user, p.u) && published(req.user, p.period));
+  res.json(req.user.role === 'employee' ? list.map(employeePlan) : list);
+}));
 
 /* ---------------------------- Create / edit ----------------------------- */
 goalsRouter.post('/goals', route((req, res) => {
   assertRole(req.user, 'employee');
   const input = req.body || {};
   const u = req.user.id;
+  assertCycleOpen(input.period, u);
   if (getPlan(u, input.period).stage !== 'Goal setting') throw new HttpError(409, 'Goal setting is closed for this period.');
   let goal = {
-    id: nextId('goals'), u, period: input.period, title: '', category: GOAL_CATEGORIES[0], desc: '', metric: '', target: '', priority: 'Medium',
+    id: nextId('goals'), u, period: input.period, title: '', category: frameworkFor(input.period).categories[0], desc: '', metric: '', target: '', priority: 'Medium',
     weight: 0, start: '', due: '', notes: '', ...cleanFields(input),
     status: 'Draft', progress: 0, updates: [], reviewNote: '', change: null,
     selfRating: null, selfComment: '', managerRating: null, managerComment: '', improvement: '', history: [], d: todayIso(),
@@ -124,6 +167,7 @@ goalsRouter.patch('/goals/:id', route((req, res) => {
   assertRole(req.user, 'employee');
   const current = findGoal(req.params.id);
   assertAccess(req.user, current.u);
+  assertCycleOpen(current.period, current.u);
   if (!EMPLOYEE_EDITABLE.includes(current.status)) {
     throw new HttpError(409, isActive(current) ? 'Approved goals cannot be edited directly — raise a change request.' : 'This goal is waiting for your manager.');
   }
@@ -145,6 +189,7 @@ goalsRouter.delete('/goals/:id', route((req, res) => {
   assertRole(req.user, 'employee');
   const current = findGoal(req.params.id);
   assertAccess(req.user, current.u);
+  assertCycleOpen(current.period, current.u);
   if (!EMPLOYEE_DELETABLE.includes(current.status)) throw new HttpError(409, 'Only draft, returned or rejected goals can be deleted.');
   remove('goals', current.id);
   const plan = withHistory(getPlan(current.u, current.period), req.user, 'Deleted goal', current.title);
@@ -167,6 +212,7 @@ goalsRouter.post('/goals/:id/:action', route((req, res) => {
   assertRole(req.user, role);
   const current = findGoal(req.params.id);
   assertAccess(req.user, current.u);
+  assertCycleOpen(current.period, current.u);
   assertGoalSetting(current);
   const payload = req.body || {};
   const user = req.user;
@@ -277,7 +323,8 @@ const PLAN_ACTIONS = {
   evaluate: { role: 'manager', from: ['Self-assessed'], to: 'Evaluated' },
   hrFinalize: { role: 'hr', from: ['Evaluated'], to: 'Finalized' },
   hrReturn: { role: 'hr', from: ['Evaluated'], to: 'Self-assessed' },
-  acknowledge: { role: 'employee', from: ['Evaluated', 'Finalized'], to: 'Acknowledged' },
+  discuss: { role: 'manager', from: ['Finalized'], to: 'Discussed' },
+  acknowledge: { role: 'employee', from: ['Discussed'], to: 'Acknowledged' },
 };
 
 function readRatings(list, ratings, label, withImprovement) {
@@ -289,6 +336,30 @@ function readRatings(list, ratings, label, withImprovement) {
   });
 }
 
+/**
+ * Manager (for a direct report) or HR sends a reminder to one employee.
+ * The text depends on what the employee still has to do in this cycle.
+ */
+goalsRouter.post('/goal-plans/:u/:period/remind', route((req, res) => {
+  const u = Number(req.params.u);
+  const { period } = req.params;
+  if (req.user.role === 'employee') throw new HttpError(403, 'Only managers and HR can send reminders.');
+  if (!canSee(req.user, u)) throw new HttpError(403, 'You can only remind employees who report to you.');
+  const cycle = cycleFor(period);
+  const employee = userById(u);
+  if (!employee || employee.active === false) throw new HttpError(404, 'Employee not found.');
+  if (cycle && !isEligible(cycle, employee)) throw new HttpError(409, `${employee.name} is not part of the ${period} cycle.`);
+  const plan = getPlan(u, period);
+  const status = planPhaseStatus(plan, goalsFor(getDb().goals, u, period));
+  const message = reminderFor(status, cycle);
+  if (!message) throw new HttpError(409, `Nothing is waiting on ${employee.name} right now (status: ${status}).`);
+  notify([u], { ...message, tone: 'warning', link: `/goals?period=${encodeURIComponent(period)}` });
+  const saved = save('goalPlans', withHistory({ ...plan, lastReminderAt: todayIso() }, req.user, 'Reminder sent', message.title));
+  persist();
+  publish(u, { plan: saved });
+  res.json({ sent: 1, status, plan: req.user.role === 'employee' ? employeePlan(saved) : saved });
+}));
+
 goalsRouter.post('/goal-plans/:u/:period/:action', route((req, res) => {
   const u = Number(req.params.u);
   const { period, action } = req.params;
@@ -298,11 +369,13 @@ goalsRouter.post('/goal-plans/:u/:period/:action', route((req, res) => {
   assertRole(user, rule.role);
   if (user.role !== 'hr') assertAccess(user, u);
   const db = getDb();
-  const hrReview = Boolean(db.settings?.hrReview);
-  if (rule.role === 'hr' && !hrReview) throw new HttpError(409, 'HR final review is turned off in Settings.');
+  const hrReview = true; // HR validation is a required step
+  assertCycleOpen(period, u);
   let plan = getPlan(u, period);
-  if (!rule.from.includes(plan.stage)) throw new HttpError(409, `Not available — this review is at "${plan.stage}".`);
-  if (action === 'acknowledge' && hrReview && plan.stage !== 'Finalized') throw new HttpError(409, 'Waiting for HR final review.');
+  if (!rule.from.includes(plan.stage)) {
+    const why = { acknowledge: 'The manager has not shared the feedback discussion yet.', discuss: 'HR has not validated this appraisal yet.' }[action];
+    throw new HttpError(409, why || `Not available — this review is at "${plan.stage}".`);
+  }
   const list = goalsFor(db.goals, u, period);
   const active = list.filter(isActive);
   const today = todayIso();
@@ -362,21 +435,28 @@ goalsRouter.post('/goal-plans/:u/:period/:action', route((req, res) => {
     const note = calibrated ? requireText(payload.note, 10, 'Explain the calibration') : text(payload.note);
     plan = withHistory({ ...plan, stage: rule.to, finalScore: score, hrNote: note, finalizedAt: today }, user,
       calibrated ? `Finalized with calibration ${plan.managerScore?.toFixed(2)} → ${score.toFixed(2)}` : 'Finalized', note);
-    notify([u], { title: 'Your appraisal is finalized', detail: `${period} · review and acknowledge`, tone: 'success', link: '/goals' });
-    notify([managerId], { title: 'HR finalized an appraisal', detail: `${employee.name} · ${period}`, tone: 'info', link });
+    notify([managerId], { title: 'HR validated an appraisal — share the feedback', detail: `${employee.name} · ${period} · hold the feedback discussion`, tone: 'warning', link });
   }
   if (action === 'hrReturn') {
     const note = requireText(payload.note, 5, 'Explain what the manager should revisit');
     plan = withHistory({ ...plan, stage: rule.to, hrNote: note, managerScore: null, finalScore: null }, user, 'Returned to manager by HR', note);
     notify([managerId], { title: 'HR returned an evaluation', detail: `${employee.name} · ${note}`, tone: 'warning', link });
   }
+  if (action === 'discuss') {
+    const notes = requireText(payload.notes, 10, 'Summarise the feedback discussion', 1500);
+    const on = /^\d{4}-\d{2}-\d{2}$/.test(String(payload.date || '')) ? payload.date : today;
+    if (on > today) throw new HttpError(400, 'The discussion date cannot be in the future.');
+    plan = withHistory({ ...plan, stage: rule.to, discussedAt: on, discussionNotes: notes }, user, 'Feedback discussion held', notes);
+    notify([u], { title: 'Your appraisal feedback has been shared', detail: `${period} · review your final rating and acknowledge`, tone: 'success', link: '/goals' });
+  }
   if (action === 'acknowledge') {
-    plan = withHistory({ ...plan, stage: rule.to, ackAt: today, ackComment: text(payload.comment), finalScore: plan.finalScore ?? plan.managerScore }, user, 'Acknowledged final rating', payload.comment);
+    plan = withHistory({ ...plan, stage: rule.to, ackAt: today, ackComment: text(payload.comment), finalScore: plan.finalScore ?? plan.managerScore }, user, 'Acknowledged final rating — appraisal completed', payload.comment);
+    notify(hrIds(), { title: 'Appraisal completed', detail: `${employee.name} · ${period} acknowledged`, tone: 'success', link: '/hr-review' });
     notify([managerId], { title: `${firstName(u)} acknowledged the appraisal`, detail: `${period}${payload.comment ? ` — ${text(payload.comment, 120)}` : ''}`, tone: 'success', link });
   }
 
   save('goalPlans', plan);
   persist();
   publish(u, { goals: changedGoals, plan });
-  res.json({ plan, goals: goalsFor(db.goals, u, period) });
+  res.json(forViewer(user, { plan, goals: goalsFor(db.goals, u, period) }));
 }));

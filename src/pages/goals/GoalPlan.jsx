@@ -12,8 +12,8 @@ import Typography from '@mui/material/Typography';
 import useMediaQuery from '@mui/material/useMediaQuery';
 import { useTheme } from '@mui/material/styles';
 import {
-  ArrowLeft, BadgeCheck, CheckCircle2, CircleAlert, ClipboardList, Gauge, GitPullRequestArrow, ListChecks, MessageSquarePlus,
-  Pencil, Plus, RotateCcw, Scale, Send, Star, Target, Trash2, TrendingUp, Undo2, XCircle,
+  ArrowLeft, BadgeCheck, CalendarRange, CheckCircle2, CircleAlert, ClipboardList, Gauge, GitPullRequestArrow, ListChecks, MessageSquarePlus,
+  BellRing, Handshake, Info, Pencil, Plus, RotateCcw, Scale, Send, Star, Target, Trash2, TrendingUp, Undo2, XCircle,
 } from 'lucide-react';
 import FinalizeDialog from '../../components/goals/FinalizeDialog.jsx';
 import GoalCard from '../../components/goals/GoalCard.jsx';
@@ -27,9 +27,10 @@ import { useAuth } from '../../context/AuthContext.jsx';
 import { useDeleteGoal, useGoalAction, useGoalPlanAction } from '../../hooks/queries/goals.js';
 import { useGoalData } from '../../hooks/queries/workspace.js';
 import { useToast } from '../../context/ToastContext.jsx';
-import { GOAL_PERIODS, GOAL_RULES } from '../../data/constants.js';
+import { cycleFor, frameworkFor, reminderFor, rulesFor } from '../../data/cycles.js';
+import { useRemindEmployee } from '../../hooks/queries/cycles.js';
 import {
-  EMPLOYEE_DELETABLE, EMPLOYEE_EDITABLE, countsTowardWeight, effectiveScore, getPlan, goalsFor, isActive, periodRangeText,
+  EMPLOYEE_DELETABLE, EMPLOYEE_EDITABLE, EVAL_STAGES, countsTowardWeight, effectiveScore, getPlan, goalsFor, isActive, periodRangeText,
   planChecks, planHistory, planPhase, planReady, planSteps, selfAssessmentBlocker, totalWeight, weightedProgress, weightedScore,
 } from '../../data/goals.js';
 import { findUser, formatDate, ratingLabel } from '../../data/selectors.js';
@@ -37,36 +38,49 @@ import { grid, page, text } from '../../styles/common.js';
 import { goals as s } from '../../styles/pages.js';
 import usePeriod from './usePeriod.js';
 
-const EVAL_STAGES = ['Self-assessed', 'Evaluated', 'Finalized', 'Acknowledged'];
-
-function guidance(phase, viewer, name, hrReview) {
+/** What the current viewer should do, per appraisal status (matches the process document). */
+function guidance(status, viewer, name, target) {
   const text = {
     employee: {
-      'Goal setting': `Create your goals, then submit them for approval. Total weightage must equal ${GOAL_RULES.totalWeight}%.`,
-      'Manager approval': 'Waiting for your manager to approve submitted goals or change requests. You can keep updating progress on approved goals.',
-      'Progress & self assessment': 'Update progress and add evidence as you go. When the period ends, submit your self assessment.',
-      'Manager evaluation': 'Self assessment submitted. Your manager is evaluating your goals.',
-      'HR final review': 'Your manager has completed the evaluation. HR is doing the final review.',
-      Acknowledge: 'Your appraisal is ready. Review the ratings and feedback, then acknowledge.',
-      Closed: 'This review cycle is closed.',
+      Draft: 'HR has not published this appraisal cycle yet.',
+      Open: `Fill the goal-setting form: goals, KPIs, targets and weightages (total ${target}%), then submit them for approval.`,
+      Submitted: 'Your goals are submitted. Your manager will review and approve them.',
+      'Under Review': 'Your manager is reviewing your goals — check for comments or requested changes.',
+      Approved: 'Goals approved. Update progress and evidence as you go; self-appraisal opens later in the cycle.',
+      'Self-Appraisal Pending': 'Submit your achievements and self-rating for each goal.',
+      'Manager Review Pending': 'Self-appraisal submitted. Your manager is evaluating your performance.',
+      'HR Review Pending': 'Your manager has evaluated your performance. HR is validating the ratings.',
+      'Feedback Pending': 'HR has validated your appraisal. Your manager will hold the feedback discussion with you.',
+      'Acknowledgement Pending': 'Your manager has shared the feedback. Review your final rating and acknowledge.',
+      Completed: 'Appraisal completed.',
+      Closed: 'This appraisal cycle was closed by HR.',
     },
     manager: {
-      'Goal setting': `${name} is still setting goals. Nothing to approve yet.`,
-      'Manager approval': `Review each submitted goal: approve it, request changes or reject it with a comment.`,
-      'Progress & self assessment': `Goals are active. Follow ${name}'s progress and share feedback; ${name} submits a self assessment at the end of the period.`,
-      'Manager evaluation': `${name} submitted a self assessment. Rate each goal, add feedback and improvement suggestions.`,
-      'HR final review': 'Evaluation completed and sent to HR for final review.',
-      Acknowledge: `Appraisal ${hrReview ? 'finalized by HR' : 'completed'}. Waiting for ${name} to acknowledge.`,
-      Closed: 'This review cycle is closed.',
+      Draft: 'HR has not published this cycle yet.',
+      Open: `${name} is filling the goal-setting form. Nothing to review yet.`,
+      Submitted: `${name} submitted goals. Review them: approve, request changes or reject with a comment.`,
+      'Under Review': 'Finish reviewing the remaining goals or change requests.',
+      Approved: `Goals are approved. Follow ${name}'s progress and share feedback along the way.`,
+      'Self-Appraisal Pending': `Waiting for ${name}'s self-appraisal.`,
+      'Manager Review Pending': `${name} submitted a self-appraisal. Rate each goal and add your feedback.`,
+      'HR Review Pending': 'Evaluation completed and sent to HR for validation.',
+      'Feedback Pending': `HR validated the appraisal. Hold the feedback discussion with ${name}, then record it here.`,
+      'Acknowledgement Pending': `Feedback shared. Waiting for ${name} to acknowledge.`,
+      Completed: 'Appraisal completed.',
+      Closed: 'This appraisal cycle was closed by HR.',
     },
     hr: {
-      'Goal setting': `${name} is setting goals.`, 'Manager approval': 'Goals are waiting for manager approval.',
-      'Progress & self assessment': 'Goals are active and being tracked.', 'Manager evaluation': 'Waiting for the manager evaluation.',
-      'HR final review': 'Review the manager assessment, then finalize or return it.', Acknowledge: 'Finalized. Waiting for the employee to acknowledge.',
-      Closed: 'This review cycle is closed.',
+      Draft: 'Publish the cycle to open goal setting.',
+      Open: `${name} is setting goals.`, Submitted: 'Goals are waiting for manager approval.', 'Under Review': 'The manager is reviewing goals.',
+      Approved: 'Goals are approved and being tracked.', 'Self-Appraisal Pending': 'Waiting for the self-appraisal.',
+      'Manager Review Pending': 'Waiting for the manager evaluation.',
+      'HR Review Pending': 'Validate the manager evaluation: finalize it (with calibration if needed) or return it.',
+      'Feedback Pending': 'Validated. Waiting for the manager to hold the feedback discussion.',
+      'Acknowledgement Pending': 'Feedback shared. Waiting for the employee to acknowledge.',
+      Completed: 'Appraisal completed.', Closed: 'This appraisal cycle is closed.',
     },
   };
-  return text[viewer][phase];
+  return text[viewer][status];
 }
 
 export default function GoalPlan({ userId }) {
@@ -75,12 +89,13 @@ export default function GoalPlan({ userId }) {
   const navigate = useNavigate();
   const { user } = useAuth();
   const viewer = user.role; // employee | manager | hr
-  const { users, people, goals, goalPlans, settings } = useGoalData();
+  const { users, people, goals, goalPlans } = useGoalData();
   const goalMutation = useGoalAction();
   const planMutation = useGoalPlanAction();
   const deleteMutation = useDeleteGoal();
+  const remindMutation = useRemindEmployee();
   const { notify } = useToast();
-  const [period, setPeriod] = usePeriod();
+  const [period, setPeriod, cycles] = usePeriod();
   const [tab, setTab] = useState('goals');
 
   const [goalDialog, setGoalDialog] = useState(null); // { mode, goal }
@@ -89,16 +104,20 @@ export default function GoalPlan({ userId }) {
   const [note, setNote] = useState(null); // { kind, goal }
   const [finalize, setFinalize] = useState(false);
 
-  const hrReview = Boolean(settings?.hrReview);
+  const hrReview = true; // HR validation is a required step
+  const cycle = cycleFor(period);
+  const framework = frameworkFor(period);
+  const rules = rulesFor(period);
+  const cycleOpen = cycle?.status === 'Open';
   const member = findUser(users, userId);
   const firstName = member.n.split(' ')[0];
   const plan = getPlan(goalPlans, userId, period);
   const list = useMemo(() => goalsFor(goals, userId, period), [goals, userId, period]);
-  const phase = planPhase(plan, list, hrReview);
-  const steps = planSteps(hrReview);
+  const phase = planPhase(plan, list);
+  const steps = planSteps();
   const checks = planChecks(list, period);
   const ready = planReady(list, period);
-  const settingOpen = plan.stage === 'Goal setting';
+  const settingOpen = cycleOpen && plan.stage === 'Goal setting';
   const counted = list.filter(countsTowardWeight);
   const drafts = list.filter((g) => EMPLOYEE_EDITABLE.includes(g.status));
   const pending = list.filter((g) => g.status === 'Pending Approval');
@@ -121,18 +140,18 @@ export default function GoalPlan({ userId }) {
   /* ------------------------------ Top actions ----------------------------- */
   const top = [];
   if (viewer === 'employee' && settingOpen) {
-    top.push(<Button key="add" variant="outlined" startIcon={<Plus size={16} />} disabled={counted.length >= GOAL_RULES.maxGoals} onClick={() => setGoalDialog({ mode: 'create' })}>Add new goal</Button>);
+    top.push(<Button key="add" variant="outlined" startIcon={<Plus size={16} />} disabled={counted.length >= rules.maxGoals} onClick={() => setGoalDialog({ mode: 'create' })}>Add new goal</Button>);
     if (drafts.length) {
       top.push(<Button key="submitAll" variant="contained" startIcon={<Send size={16} />} disabled={!ready || planBusy('submitAll')}
         onClick={() => quickPlan('submitAll', 'Goals submitted for manager approval.')}>
         Submit {drafts.length} goal{drafts.length === 1 ? '' : 's'} for approval
       </Button>);
     }
-    if (phase.phase === 'Progress & self assessment') {
+    if (['Approved', 'Self-Appraisal Pending'].includes(phase.status)) {
       top.push(<Button key="self" variant="contained" startIcon={<Star size={16} />} disabled={Boolean(blocker)} onClick={() => setRating(true)}>Start self assessment</Button>);
     }
   }
-  if (viewer === 'employee' && phase.phase === 'Acknowledge') {
+  if (viewer === 'employee' && cycleOpen && phase.status === 'Acknowledgement Pending') {
     top.push(<Button key="ack" variant="contained" startIcon={<CheckCircle2 size={16} />} onClick={() => setNote({ kind: 'acknowledge' })}>Acknowledge appraisal</Button>);
   }
   if (viewer === 'manager' && settingOpen && pending.length) {
@@ -141,10 +160,21 @@ export default function GoalPlan({ userId }) {
       Approve all {pending.length} pending
     </Button>);
   }
-  if (viewer === 'manager' && plan.stage === 'Self-assessed') {
+  if (viewer === 'manager' && cycleOpen && plan.stage === 'Self-assessed') {
     top.push(<Button key="eval" variant="contained" startIcon={<Star size={16} />} onClick={() => setRating(true)}>Evaluate performance</Button>);
   }
-  if (viewer === 'hr' && hrReview && plan.stage === 'Evaluated') {
+  if (viewer !== 'employee' && reminderFor(phase.status, cycle)) {
+    top.push(
+      <Button key="remind" variant="outlined" startIcon={<BellRing size={16} />} disabled={remindMutation.isPending}
+        onClick={() => remindMutation.mutate({ u: userId, period }, toastOnly(`Reminder sent to ${member.n}.`))}>
+        Send reminder
+      </Button>,
+    );
+  }
+  if (viewer === 'manager' && cycleOpen && plan.stage === 'Finalized') {
+    top.push(<Button key="discuss" variant="contained" startIcon={<Handshake size={16} />} onClick={() => setNote({ kind: 'discuss' })}>Record feedback discussion</Button>);
+  }
+  if (viewer === 'hr' && cycleOpen && plan.stage === 'Evaluated') {
     top.push(<Button key="ret" variant="outlined" color="warning" startIcon={<RotateCcw size={16} />} onClick={() => setNote({ kind: 'hrReturn' })}>Return to manager</Button>);
     top.push(<Button key="fin" variant="contained" startIcon={<BadgeCheck size={16} />} onClick={() => setFinalize(true)}>Finalize appraisal</Button>);
   }
@@ -194,18 +224,30 @@ export default function GoalPlan({ userId }) {
     declineChange: { title: 'Decline change request', label: 'Reason', min: 5, confirm: 'Decline', color: 'error', info: 'The goal stays as originally approved.', run: (t) => goalAction(note.goal.id, 'declineChange', { note: t }), done: 'Change request declined.' },
     delete: { title: 'Delete goal?', confirm: 'Delete', color: 'error', info: 'This removes the goal from your plan. The deletion is kept in the activity history.', run: () => removeGoal(note.goal.id), done: 'Goal deleted.' },
     acknowledge: { title: 'Acknowledge appraisal', label: 'Comment (optional)', confirm: 'Acknowledge', info: 'Acknowledging confirms you have seen your ratings and feedback. Add a comment if you want it on record.', run: (t) => goalPlanAction('acknowledge', { comment: t }), done: 'Appraisal acknowledged. Review cycle closed.' },
+    discuss: { title: 'Feedback discussion', label: 'Discussion summary — what was agreed', min: 10, confirm: 'Share with employee', info: `Hold the feedback discussion with ${firstName} first. Saving shares the final rating and your feedback, and asks ${firstName} to acknowledge.`, run: (t) => goalPlanAction('discuss', { notes: t }), done: 'Feedback shared — waiting for the employee to acknowledge.' },
     hrReturn: { title: 'Return to manager', label: 'What should the manager revisit?', min: 5, confirm: 'Return', color: 'warning', run: (t) => goalPlanAction('hrReturn', { note: t }), done: 'Returned to the manager for re-evaluation.' },
   };
   const cfg = note ? NOTE[note.kind] : null;
 
   const showSelf = EVAL_STAGES.includes(plan.stage);
-  const showManager = viewer !== 'employee' ? ['Evaluated', 'Finalized', 'Acknowledged'].includes(plan.stage) : score !== null;
+  // Employees see the manager's ratings only after HR validation and the feedback discussion.
+  const showManager = viewer !== 'employee' ? ['Evaluated', 'Finalized', 'Discussed', 'Acknowledged'].includes(plan.stage) : ['Discussed', 'Acknowledged'].includes(plan.stage);
+
+  if (!period) {
+    return (
+      <Box sx={page.root}>
+        <PageHeader eyebrow="Performance management" title={viewer === 'employee' ? 'My goals' : 'Goals'} />
+        <EmptyState icon={CalendarRange} title="No appraisal cycle is open"
+          description="HR/Admin starts the appraisal process by creating and publishing a cycle. Goal setting opens as soon as it is published." />
+      </Box>
+    );
+  }
 
   return (
     <Box sx={page.root}>
       {viewer !== 'employee' && (
-        <Button startIcon={<ArrowLeft size={16} />} onClick={() => navigate(viewer === 'hr' ? '/hr-review' : `/goals?period=${encodeURIComponent(period)}`)} sx={s.back}>
-          {viewer === 'hr' ? 'Performance review' : 'Team goals'}
+        <Button startIcon={<ArrowLeft size={16} />} onClick={() => navigate(`/goals?period=${encodeURIComponent(period)}`)} sx={s.back}>
+          {viewer === 'hr' ? 'All goals' : 'Team goals'}
         </Button>
       )}
       <PageHeader
@@ -216,18 +258,41 @@ export default function GoalPlan({ userId }) {
       />
 
       <Box sx={page.stack}>
-        <FilterChips label="Review period" value={period} onChange={setPeriod} options={GOAL_PERIODS} />
+        <FilterChips label="Appraisal cycle" value={period} onChange={setPeriod}
+          options={cycles.map((c) => ({ value: c.period, label: c.status === 'Open' ? c.period : `${c.period} · ${c.status}` }))} />
 
-        <SectionCard title="Workflow status" subtitle={guidance(phase.phase, viewer, firstName, hrReview)} icon={ClipboardList}
-          action={<Pill tone={phase.tone} dot>{phase.phase}</Pill>}>
+        {cycle && (
+          <Box sx={s.cycleBar}>
+            <Box sx={s.cycleItem}><Typography variant="caption" color="text.secondary">Goal setting by</Typography><Typography variant="subtitle2">{formatDate(cycle.goalDeadline)}</Typography></Box>
+            <Box sx={s.cycleItem}><Typography variant="caption" color="text.secondary">Self-appraisal</Typography><Typography variant="subtitle2">{formatDate(cycle.selfStart)} – {formatDate(cycle.selfDeadline)}</Typography></Box>
+            <Box sx={s.cycleItem}><Typography variant="caption" color="text.secondary">Cycle ends</Typography><Typography variant="subtitle2">{formatDate(cycle.end)}</Typography></Box>
+            <Pill tone={cycleOpen ? 'success' : 'neutral'} dot>{cycleOpen ? 'Cycle open' : `Cycle ${cycle.status.toLowerCase()}`}</Pill>
+          </Box>
+        )}
+
+        <SectionCard title="Appraisal status" subtitle={guidance(phase.status, viewer, firstName, rules.totalWeight)} icon={ClipboardList}
+          action={(
+            <Box sx={s.statusHead}>
+              <Pill tone={phase.tone} dot>{phase.status}</Pill>
+              {phase.nextBy !== '—' && <Typography variant="caption" color="text.secondary">Next action by <b>{phase.nextBy}</b></Typography>}
+            </Box>
+          )}>
           <Stepper activeStep={phase.step} alternativeLabel={!compact} orientation={compact ? 'vertical' : 'horizontal'} sx={s.stepper}>
             {steps.map((label, i) => <Step key={label} completed={phase.step > i}><StepLabel>{label}</StepLabel></Step>)}
           </Stepper>
-          {plan.hrNote && plan.stage === 'Self-assessed' && viewer !== 'employee' && <Alert severity="warning" sx={{ mt: 2 }}><b>Returned by HR:</b> {plan.hrNote}</Alert>}
+          {plan.hrNote && plan.stage === 'Self-assessed' && viewer !== 'employee' && <Alert severity="warning" sx={s.stepAlert}><b>Returned by HR:</b> {plan.hrNote}</Alert>}
+          {viewer === 'employee' && settingOpen && framework.instructions && (
+            <Alert severity="info" icon={<Info size={18} />} sx={s.stepAlert}><b>Instructions from HR:</b> {framework.instructions}</Alert>
+          )}
           {top.length > 0 && (
             <Box sx={s.stageActions}>
-              {viewer === 'employee' && phase.phase === 'Progress & self assessment' && blocker && (
+              {viewer === 'employee' && ['Approved', 'Self-Appraisal Pending'].includes(phase.status) && blocker && (
                 <Typography variant="caption" color="text.secondary" mr="auto">{blocker}</Typography>
+              )}
+              {viewer !== 'employee' && reminderFor(phase.status, cycle) && (
+                <Typography variant="caption" color="text.secondary" mr="auto">
+                  {plan.lastReminderAt ? `Last reminded ${formatDate(plan.lastReminderAt)}` : `${firstName} has not been reminded yet.`}
+                </Typography>
               )}
               {viewer === 'employee' && drafts.length > 0 && !ready && (
                 <Typography variant="caption" color="text.secondary" mr="auto">Complete the checklist to submit.</Typography>
@@ -260,13 +325,13 @@ export default function GoalPlan({ userId }) {
                 </Box>
               ) : (
                 <EmptyState icon={Target} title={`No goals for ${period}`}
-                  description={viewer === 'employee' ? `Goal setting starts with you. Add goals until the total weightage reaches ${GOAL_RULES.totalWeight}%.` : `${firstName} has not created any goals yet.`}
+                  description={viewer === 'employee' ? (cycleOpen ? `Goal setting starts with you. Add goals until the total weightage reaches ${rules.totalWeight}%.` : `The ${period} cycle is ${cycle?.status.toLowerCase()}.`) : `${firstName} has not created any goals yet.`}
                   action={viewer === 'employee' && settingOpen && <Button variant="contained" startIcon={<Plus size={16} />} onClick={() => setGoalDialog({ mode: 'create' })}>Add first goal</Button>} />
               )}
             </SectionCard>
 
             <Box sx={page.stack}>
-              {settingOpen && (phase.phase === 'Goal setting' || drafts.length > 0) && (
+              {settingOpen && (phase.status === 'Open' || drafts.length > 0) && (
                 <SectionCard title="Submission checklist" subtitle="Required before goals can be submitted." icon={ListChecks}>
                   <Box component="ul" sx={s.checks}>
                     {checks.map((c) => (
@@ -301,7 +366,10 @@ export default function GoalPlan({ userId }) {
                     {plan.selfSummary && <Box><Typography variant="subtitle2">Self assessment</Typography><Typography variant="body2" sx={text.quote}>{plan.selfSummary}</Typography></Box>}
                     {showManager && plan.managerSummary && <Box><Typography variant="subtitle2">Manager feedback</Typography><Typography variant="body2" sx={text.quote}>{plan.managerSummary}</Typography></Box>}
                     {showManager && plan.managerImprovement && <Box><Typography variant="subtitle2">Improvement suggestions</Typography><Typography variant="body2" sx={text.quote}>{plan.managerImprovement}</Typography></Box>}
-                    {plan.hrNote && ['Finalized', 'Acknowledged'].includes(plan.stage) && <Alert severity="info"><b>HR note:</b> {plan.hrNote}</Alert>}
+                    {plan.hrNote && (viewer !== 'employee' ? ['Finalized', 'Discussed', 'Acknowledged'] : ['Discussed', 'Acknowledged']).includes(plan.stage) && <Alert severity="info"><b>HR note:</b> {plan.hrNote}</Alert>}
+                    {plan.discussionNotes && ['Discussed', 'Acknowledged'].includes(plan.stage) && (
+                      <Box><Typography variant="subtitle2">Feedback discussion · {formatDate(plan.discussedAt)}</Typography><Typography variant="body2" sx={text.quote}>{plan.discussionNotes}</Typography></Box>
+                    )}
                     {plan.stage === 'Acknowledged' && <Alert severity="success">Acknowledged {formatDate(plan.ackAt)}{plan.ackComment ? ` — “${plan.ackComment}”` : ''}</Alert>}
                   </Box>
                 ) : (
@@ -330,7 +398,7 @@ export default function GoalPlan({ userId }) {
                     <Box key={p.id} sx={s.pastRow}>
                       <Box minWidth={0} flex={1}>
                         <Typography variant="subtitle1">{p.period}</Typography>
-                        <Typography variant="caption" color="text.secondary">{p.stage === 'Acknowledged' ? `Closed ${formatDate(p.ackAt)}` : p.stage} · {goalsFor(goals, userId, p.period).length} goals</Typography>
+                        <Typography variant="caption" color="text.secondary">{p.stage === 'Acknowledged' ? `Completed ${formatDate(p.ackAt)}` : planPhase(p, goalsFor(goals, userId, p.period)).status} · {goalsFor(goals, userId, p.period).length} goals</Typography>
                         {p.managerSummary && <Typography variant="body2" color="text.secondary" mt={0.5}>{p.managerSummary}</Typography>}
                       </Box>
                       {ps !== null ? <ScoreBadge value={ps} suffix=" / 5" /> : <Pill tone="neutral">In review</Pill>}

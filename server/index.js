@@ -17,6 +17,7 @@ import { DB_FILE } from './db.js';
 import { HttpError } from './http.js';
 import { attachRealtime } from './realtime.js';
 import { authRouter } from './routes/auth.js';
+import { cyclesRouter } from './routes/cycles.js';
 import { goalsRouter } from './routes/goals.js';
 import { usersRouter } from './routes/users.js';
 import { workspaceRouter } from './routes/workspace.js';
@@ -38,6 +39,7 @@ app.get('/api/health', (_req, res) => res.json({ ok: true, time: new Date().toIS
 app.use('/api/auth', authRouter);
 app.use('/api/users', usersRouter);
 app.use('/api', workspaceRouter);
+app.use('/api', cyclesRouter);
 app.use('/api', goalsRouter);
 
 /* ---------------------------- AI suggestions --------------------------- */

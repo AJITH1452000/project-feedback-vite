@@ -21,6 +21,7 @@ const Settings = lazy(() => import('../pages/settings/Settings.jsx'));
 const MyPerformance = lazy(() => import('../pages/profile/MyPerformance.jsx'));
 const Goals = lazy(() => import('../pages/goals/Goals.jsx'));
 const HrReview = lazy(() => import('../pages/hr/HrReview.jsx'));
+const Cycles = lazy(() => import('../pages/cycles/Cycles.jsx'));
 const Users = lazy(() => import('../pages/users/Users.jsx'));
 const NotFound = lazy(() => import('../pages/NotFound.jsx'));
 
@@ -80,6 +81,7 @@ export default function App() {
           <Route path="goals" element={<Goals />} />
           <Route path="goals/:userId" element={<RequireAuth roles={['manager', 'hr']}><Goals /></RequireAuth>} />
           <Route path="hr-review" element={<RequireAuth roles={['hr']}><HrReview /></RequireAuth>} />
+          <Route path="cycles" element={<RequireAuth roles={['hr']}><Cycles /></RequireAuth>} />
           <Route path="users" element={<RequireAuth roles={['manager', 'hr']}><Users /></RequireAuth>} />
           <Route path="settings" element={<Settings />} />
           <Route path="*" element={<NotFound />} />

@@ -12,7 +12,7 @@ import Typography from '@mui/material/Typography';
 import { BadgeCheck } from 'lucide-react';
 import { useGoalPlanAction } from '../../hooks/queries/goals.js';
 import { useToast } from '../../context/ToastContext.jsx';
-import { ratingLabel } from '../../data/selectors.js';
+import { scaleLabel } from '../../data/cycles.js';
 import { dialog, grid } from '../../styles/common.js';
 
 /** HR/Admin: confirm the manager's score, or calibrate it with a written reason. */
@@ -47,14 +47,14 @@ export default function FinalizeDialog({ open, onClose, plan, ownerName }) {
       <DialogTitle id="finalize-title" sx={dialog.title} component="div">
         <Box>
           <Typography variant="h3">Finalize appraisal</Typography>
-          <Typography variant="body2" sx={dialog.subtitle}>{ownerName} · {plan.period} · manager score {plan.managerScore?.toFixed(2)} ({ratingLabel(plan.managerScore)})</Typography>
+          <Typography variant="body2" sx={dialog.subtitle}>{ownerName} · {plan.period} · manager score {plan.managerScore?.toFixed(2)} ({scaleLabel(plan.period, plan.managerScore)})</Typography>
         </Box>
       </DialogTitle>
       <DialogContent sx={dialog.content}>
         {plan.managerSummary && <Alert severity="info"><b>Manager feedback:</b> {plan.managerSummary}</Alert>}
         <Box sx={grid.form2}>
           <TextField label="Final score" type="number" value={score} onChange={(e) => setScore(e.target.value)} inputProps={{ min: 1, max: 5, step: 0.05 }}
-            helperText={Number.isFinite(value) && value >= 1 ? ratingLabel(value) : '1.00 – 5.00'} fullWidth />
+            helperText={Number.isFinite(value) && value >= 1 ? scaleLabel(plan.period, value) : '1.00 – 5.00'} fullWidth />
           <Box display="flex" alignItems="center">
             <Typography variant="caption" color="text.secondary">
               {calibrated ? `Calibrating ${plan.managerScore?.toFixed(2)} → ${value.toFixed(2)}. A reason is required and is recorded in the history.` : 'Keeping the manager score.'}

@@ -25,6 +25,7 @@ export const ENDPOINTS = {
   settings: '/settings/review',
   goals: '/goals',
   goalPlans: '/goal-plans',
+  cycles: '/cycles',
   ai: '/ai/analyze',
 };
 
@@ -88,7 +89,7 @@ export const changePassword = (current, next) => http(ENDPOINTS.password, { meth
 /** Everything the signed-in user may see. The server filters by role. */
 export async function fetchWorkspace(user, { signal } = {}) {
   const staff = user.role === 'manager' || user.role === 'hr';
-  const [projects, users, reviews, history, signals, notifications, settings, goals, goalPlans, people] = await Promise.all([
+  const [projects, users, reviews, history, signals, notifications, settings, goals, goalPlans, people, cycles] = await Promise.all([
     http(ENDPOINTS.projects, { signal }),
     http(ENDPOINTS.users, { signal }),
     http(ENDPOINTS.reviews, { signal }),
@@ -99,8 +100,9 @@ export async function fetchWorkspace(user, { signal } = {}) {
     http(ENDPOINTS.goals, { signal }),
     http(ENDPOINTS.goalPlans, { signal }),
     staff ? http(ENDPOINTS.directory, { signal }) : [],
+    http(ENDPOINTS.cycles, { signal }),
   ]);
-  return { projects, users, reviews, history, signals, notifications, settings, goals, goalPlans, people };
+  return { projects, users, reviews, history, signals, notifications, settings, goals, goalPlans, people, cycles };
 }
 
 /* ------------------------------- People -------------------------------- */
@@ -117,6 +119,17 @@ export const createProject = (input) => http(ENDPOINTS.projects, { method: 'POST
 export const updateSignal = (id, changes) => http(`${ENDPOINTS.signals}/${encodeURIComponent(id)}`, { method: 'PATCH', body: changes });
 export const markNotificationsRead = (ids) => http(`${ENDPOINTS.notifications}/read`, { method: 'POST', body: { ids } });
 export const saveReviewSettings = (settings) => http(ENDPOINTS.settings, { method: 'PUT', body: settings });
+
+/* -------------------------- Appraisal cycles (HR) ---------------------- */
+export const createCycle = (input) => http(ENDPOINTS.cycles, { method: 'POST', body: input });
+export const updateCycle = (id, changes) => http(`${ENDPOINTS.cycles}/${encodeURIComponent(id)}`, { method: 'PATCH', body: changes });
+export const deleteCycle = (id) => http(`${ENDPOINTS.cycles}/${encodeURIComponent(id)}`, { method: 'DELETE' });
+/** action: publish | close */
+/** HR: remind everyone with a pending step → { sent, byStatus } */
+export const remindCycle = (id) => http(`${ENDPOINTS.cycles}/${encodeURIComponent(id)}/remind`, { method: 'POST', body: {} });
+/** Manager/HR: remind one employee → { sent, status, plan } */
+export const remindEmployee = (u, period) => http(`${ENDPOINTS.goalPlans}/${encodeURIComponent(u)}/${encodeURIComponent(period)}/remind`, { method: 'POST', body: {} });
+export const cycleAction = (id, action) => http(`${ENDPOINTS.cycles}/${encodeURIComponent(id)}/${action}`, { method: 'POST', body: {} });
 
 /* ------------------------------ Goals API ------------------------------ */
 /* The `user` argument is kept for call-site compatibility; the server uses the session. */

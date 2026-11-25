@@ -64,12 +64,13 @@ function ReviewSettingsCard() {
         </Box>
         <Box sx={s.row}>
           <Box>
-            <Typography variant="subtitle2">HR / Admin final review (optional)</Typography>
+            <Typography variant="subtitle2">HR validation of appraisals</Typography>
             <Typography variant="caption" color="text.secondary">
-              On: HR confirms or calibrates each manager evaluation before the employee sees it. Off: the manager evaluation is final — for companies without an HR team.
+              Required step: HR validates (or calibrates) every manager evaluation, then the manager holds the feedback discussion before the employee acknowledges.
+              Cycles, timelines and the goal framework are managed under Appraisal cycles.
             </Typography>
           </Box>
-          <Switch checked={Boolean(draft.hrReview)} onChange={(e) => setDraft({ ...draft, hrReview: e.target.checked })} inputProps={{ 'aria-label': 'HR final review' }} />
+          <Pill tone="success" dot>Always on</Pill>
         </Box>
         <Box sx={form.actions}>
           <Box />

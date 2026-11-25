@@ -136,7 +136,7 @@ async function main() {
   const existingGoals = await hr.get('/goals'); // HR sees every team (a manager only sees their own)
   const hasGoals = (key) => existingGoals.some((g) => g.u === ids[key]);
   const add = async (who, g, submit = false) => (await as[who].post('/goals', { ...g, submit })).goal;
-  const plan = (who, period, action, body, by) => as[by || who].post(`/goal-plans/${ids[who]}/${encodeURIComponent(period)}/${action}`, body);
+  const plan = (who, period, action, body, by) => (by === 'hr' ? hr : as[by || who]).post(`/goal-plans/${ids[who]}/${encodeURIComponent(period)}/${action}`, body);
   const act = (by, id, action, body) => as[by].post(`/goals/${id}/${action}`, body);
   const rateAll = (goals, values, extra = {}) => Object.fromEntries(goals.map((g, i) => [g.id, { rating: values[i], comment: extra.comments?.[i] || '', improvement: extra.improvements?.[i] || '' }]));
 
@@ -151,6 +151,8 @@ async function main() {
     for (const g of q3) await act('karthik', g.id, 'progress', { progress: 100, status: 'Completed', note: 'Done and signed off.', evidence: 'Release notes' });
     await plan('karthik', PREV, 'selfAssess', { ratings: rateAll(q3, [4, 4]), summary: 'Phase 1 shipped on time and the review guidelines are used by every squad.' });
     await plan('karthik', PREV, 'evaluate', { ratings: rateAll(q3, [4, 4], { comments: ['Delivered on schedule.', 'Well adopted.'] }), summary: 'Solid delivery quarter with clear technical ownership.', improvement: 'Delegate more release coordination.' }, 'priya');
+    await plan('karthik', PREV, 'hrFinalize', {}, 'hr');
+    await plan('karthik', PREV, 'discuss', { notes: 'Walked through both goals; agreed Karthik delegates release coordination next quarter.' }, 'priya');
     await plan('karthik', PREV, 'acknowledge', { comment: 'Thanks — agreed on the delegation point.' });
 
     const q4 = [
@@ -185,7 +187,8 @@ async function main() {
       ratings: rateAll(g, [5, 4, 4], { comments: ['Excellent adoption across squads.', 'Target met.', 'Done.'], improvements: ['Write a contribution guide.', '', ''] }),
       summary: 'Outstanding quarter — the component library is now a team asset.', improvement: 'Take on a design-system lead role next quarter.',
     }, 'priya');
-    step('Goals · Sneha: evaluated by Priya → waiting for Sneha to acknowledge');
+    await plan('sneha', P, 'hrFinalize', {}, 'hr');
+    step('Goals · Sneha: evaluated by Priya, validated by HR → waiting for the feedback discussion by Priya');
   }
 
   // Arun — one goal approved, one sent back for changes.
@@ -220,10 +223,10 @@ async function main() {
 ✔ Done. Sign in at http://127.0.0.1:5173 — every test account uses the password  ${PASSWORD}
 
   Role        Email                          What to try
-  HR / Admin  ${HR.email}      People & access, Performance review, Settings → turn on HR final review
-  Manager     priya.menon@profeed.test       Evaluate Karthik · review Arun's returned goal · give Karthik/Divya feedback
+  HR / Admin  ${HR.email}      Appraisal cycles (create / publish / close), Performance review → Workflow status
+  Manager     priya.menon@profeed.test       Evaluate Karthik · record Sneha's feedback discussion · review Arun's returned goal
   Manager     arjun.nair@profeed.test        Approve Meera's 3 goals
-  Employee    sneha.rao@profeed.test         Acknowledge the Q4 appraisal
+  Employee    sneha.rao@profeed.test         Waiting for the feedback discussion, then acknowledge
   Employee    arun.kumar@profeed.test        Fix the goal with "Changes Requested" and resubmit
   Employee    divya.shankar@profeed.test     Add a 30% goal, then submit the plan
   Employee    karthik.raman@profeed.test     Past reviews (Q3) · waiting for evaluation

@@ -19,15 +19,16 @@ import { FilterChips } from '../common/index.jsx';
 import { useCreateGoal, useGoalAction, useUpdateGoal } from '../../hooks/queries/goals.js';
 import { useGoalData } from '../../hooks/queries/workspace.js';
 import { useToast } from '../../context/ToastContext.jsx';
-import { GOAL_CATEGORIES, GOAL_PERIOD_RANGES, GOAL_PRIORITIES, GOAL_RULES } from '../../data/constants.js';
+import { GOAL_PRIORITIES } from '../../data/constants.js';
+import { frameworkFor, rangeFor, rulesFor } from '../../data/cycles.js';
 import { countsTowardWeight, goalProblems, goalsFor, periodRangeText } from '../../data/goals.js';
 import { dialog, form as formStyles, grid, text } from '../../styles/common.js';
 import { goals as s } from '../../styles/pages.js';
 
 const FIELDS = ['title', 'category', 'desc', 'metric', 'target', 'priority', 'weight', 'start', 'due', 'notes'];
 const blank = (period) => {
-  const range = GOAL_PERIOD_RANGES[period] || {};
-  return { title: '', category: GOAL_CATEGORIES[0], desc: '', metric: '', target: '', priority: 'Medium', weight: 20, start: range.start || '', due: range.end || '', notes: '' };
+  const range = rangeFor(period) || {};
+  return { title: '', category: frameworkFor(period).categories[0], desc: '', metric: '', target: '', priority: 'Medium', weight: 20, start: range.start || '', due: range.end || '', notes: '' };
 };
 const LABELS = { title: 'Title', category: 'Category', desc: 'Description', metric: 'KPI', target: 'Target value', priority: 'Priority', weight: 'Weightage', start: 'Start date', due: 'Target date', notes: 'Comments' };
 
@@ -49,8 +50,8 @@ export default function GoalDialog({ open, onClose, mode = 'create', goal, userI
   const [touched, setTouched] = useState(false);
   const [error, setError] = useState('');
   const [button, setButton] = useState(''); // which button started the save: 'draft' | 'submit'
-  const range = GOAL_PERIOD_RANGES[period] || {};
-  const { minWeight, maxWeight, totalWeight: target } = GOAL_RULES;
+  const range = rangeFor(period) || {};
+  const { minWeight, maxWeight, totalWeight: target } = rulesFor(period);
   const isChange = mode === 'change';
 
   useEffect(() => {
@@ -113,7 +114,7 @@ export default function GoalDialog({ open, onClose, mode = 'create', goal, userI
             error={Boolean(show('title'))} helperText={show('title')} placeholder="e.g. Automate the release regression suite" fullWidth />
           <Box sx={grid.form2}>
             <TextField select label="Goal category" required value={form.category} onChange={(e) => set('category', e.target.value)} fullWidth>
-              {GOAL_CATEGORIES.map((c) => <MenuItem key={c} value={c}>{c}</MenuItem>)}
+              {frameworkFor(period).categories.map((c) => <MenuItem key={c} value={c}>{c}</MenuItem>)}
             </TextField>
             <Box>
               <Typography variant="caption" sx={text.label}>Priority</Typography>

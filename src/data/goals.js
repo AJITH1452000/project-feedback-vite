@@ -1,6 +1,10 @@
 /** Goal workflow rules and helpers, shared by the demo API and the UI (the backend must match). */
-import { GOAL_PERIOD_RANGES, GOAL_RULES, TRACKING_STATUSES } from './constants.js';
+import { GOAL_RULES, TRACKING_STATUSES } from './constants.js';
+import { APPRAISAL_FLOW, cycleFor, rangeFor, rulesFor, statusInfo } from './cycles.js';
 import { formatDate } from './selectors.js';
+
+/** Plan stages after goal setting. 'Discussed' = manager held the feedback discussion. */
+export const EVAL_STAGES = ['Self-assessed', 'Evaluated', 'Finalized', 'Discussed', 'Acknowledged'];
 
 export const planId = (u, period) => `${u}|${period}`;
 
@@ -46,47 +50,68 @@ export function weightedScore(list, key) {
 /** The score that counts: HR-finalized, or the manager's score when HR review is off. */
 export function effectiveScore(plan, hrReview) {
   if (typeof plan.finalScore === 'number') return plan.finalScore;
-  if (!hrReview && typeof plan.managerScore === 'number' && ['Evaluated', 'Acknowledged'].includes(plan.stage)) return plan.managerScore;
+  if (!hrReview && typeof plan.managerScore === 'number' && ['Evaluated', 'Discussed', 'Acknowledged'].includes(plan.stage)) return plan.managerScore;
   return null;
 }
 
 export function periodRangeText(period) {
-  const r = GOAL_PERIOD_RANGES[period];
+  const r = rangeFor(period);
   return r ? `${formatDate(r.start)} – ${formatDate(r.end)}` : '';
 }
 
-/** Workflow steps — the HR step only exists when the company enables HR final review. */
-export function planSteps(hrReview) {
-  return ['Goal setting', 'Manager approval', 'Progress & self assessment', 'Manager evaluation', ...(hrReview ? ['HR final review'] : []), 'Acknowledge'];
+/** The six process stages (shown as the stepper). */
+export function planSteps() {
+  return APPRAISAL_FLOW.map((s) => s.title);
+}
+
+/** Today in local time (YYYY-MM-DD). */
+const today = () => {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+};
+
+/** Raw appraisal status name for a plan (see APPRAISAL_STATUSES in cycles.js). */
+export function appraisalStatus(plan, list) {
+  const cycle = cycleFor(plan.period);
+  if (cycle?.status === 'Draft') return 'Draft';
+  const byStage = {
+    'Self-assessed': 'Manager Review Pending', Evaluated: 'HR Review Pending', Finalized: 'Feedback Pending',
+    Discussed: 'Acknowledgement Pending', Acknowledged: 'Completed',
+  };
+  let status = byStage[plan.stage];
+  if (!status) {
+    const counted = list.filter(countsTowardWeight);
+    const pending = counted.filter((g) => g.status === 'Pending Approval' || g.change);
+    if (pending.length) {
+      // Submitted = nothing reviewed yet; Under Review = the manager has started acting on the plan.
+      status = counted.some((g) => g.status !== 'Pending Approval' || g.change) || list.some((g) => g.status === 'Rejected') ? 'Under Review' : 'Submitted';
+    } else if (!counted.length || totalWeight(list) !== GOAL_RULES.totalWeight || counted.some((g) => EMPLOYEE_EDITABLE.includes(g.status))) {
+      status = 'Open';
+    } else {
+      status = cycle?.selfStart && today() < cycle.selfStart ? 'Approved' : 'Self-Appraisal Pending';
+    }
+  }
+  if (cycle?.status === 'Closed' && status !== 'Completed') return 'Closed';
+  return status;
 }
 
 /**
- * Where a plan is right now: { phase, step, tone, waitingOn }.
- * Goal-setting and approval are derived from goal statuses; later phases come from plan.stage.
+ * Where a plan is right now:
+ * { phase (status name), status, stage, nextBy, step (index in APPRAISAL_FLOW), tone, waitingOn: employee|manager|hr|null }.
  */
-export function planPhase(plan, list, hrReview) {
-  const steps = planSteps(hrReview);
-  const at = (phase, tone, waitingOn) => ({ phase, step: steps.indexOf(phase), tone, waitingOn });
-  switch (plan.stage) {
-    case 'Self-assessed': return at('Manager evaluation', 'warning', 'manager');
-    case 'Evaluated': return hrReview ? at('HR final review', 'warning', 'hr') : at('Acknowledge', 'primary', 'employee');
-    case 'Finalized': return at('Acknowledge', 'primary', 'employee');
-    case 'Acknowledged': return { phase: 'Closed', step: steps.length, tone: 'success', waitingOn: null };
-    default: break;
-  }
-  const counted = list.filter(countsTowardWeight);
-  const drafting = !counted.length || totalWeight(list) !== GOAL_RULES.totalWeight || counted.some((g) => EMPLOYEE_EDITABLE.includes(g.status));
-  if (drafting) return at('Goal setting', 'neutral', 'employee');
-  if (counted.some((g) => g.status === 'Pending Approval' || g.change)) return at('Manager approval', 'warning', 'manager');
-  return at('Progress & self assessment', 'info', 'employee');
+export function planPhase(plan, list) {
+  const status = appraisalStatus(plan, list);
+  const info = statusInfo(status);
+  const waitingOn = { Employee: 'employee', Manager: 'manager', HR: 'hr' }[info.nextBy] || null;
+  return { phase: status, status, stage: info.stage, nextBy: info.nextBy, step: info.step, tone: info.tone, waitingOn };
 }
 
 /* --------------------------- Validation rules --------------------------- */
 
 /** Field-level problems for one goal (used by forms and the API). */
 export function goalProblems(goal) {
-  const { minWeight, maxWeight } = GOAL_RULES;
-  const range = GOAL_PERIOD_RANGES[goal.period];
+  const { minWeight, maxWeight } = rulesFor(goal.period);
+  const range = rangeFor(goal.period);
   const problems = {};
   if (String(goal.title || '').trim().length < 5) problems.title = 'At least 5 characters.';
   if (String(goal.metric || '').trim().length < 3) problems.metric = 'Describe how success is measured.';
@@ -104,7 +129,7 @@ export function goalProblems(goal) {
 
 /** Plan checklist — all must pass before goals can be submitted for approval. */
 export function planChecks(list, period) {
-  const { maxGoals, minWeight, maxWeight, totalWeight: target } = GOAL_RULES;
+  const { maxGoals, minWeight, maxWeight, totalWeight: target } = rulesFor(period);
   const counted = list.filter(countsTowardWeight);
   const total = totalWeight(list);
   const invalid = counted.filter((g) => Object.keys(goalProblems({ ...g, period })).length).length;

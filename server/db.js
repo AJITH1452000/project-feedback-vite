@@ -7,6 +7,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { DEFAULT_REVIEW_SETTINGS } from '../src/data/constants.js';
+import { legacyCycles, registerCycles } from '../src/data/cycles.js';
 
 const DATA_DIR = process.env.DATA_DIR || fileURLToPath(new URL('./data/', import.meta.url));
 export const DB_FILE = path.join(DATA_DIR, 'db.json');
@@ -24,19 +25,34 @@ const empty = () => ({
   settings: { ...DEFAULT_REVIEW_SETTINGS },
   goals: [],
   goalPlans: [],
+  cycles: legacyCycles(),
 });
+
+/**
+ * Upgrades older data files in place:
+ *  - adds appraisal cycles for the periods that already had goals (published, so nothing breaks)
+ *  - HR validation is now a required step of the appraisal workflow
+ */
+function migrate(data) {
+  if (!Array.isArray(data.cycles)) data.cycles = legacyCycles();
+  data.counters.cycles = Math.max(data.counters.cycles || 0, ...data.cycles.map((c) => c.id), 0);
+  data.settings = { ...data.settings, hrReview: true };
+  return data;
+}
 
 function load() {
   try {
-    const raw = fs.readFileSync(DB_FILE, 'utf8');
-    return { ...empty(), ...JSON.parse(raw) };
+    const saved = JSON.parse(fs.readFileSync(DB_FILE, 'utf8'));
+    // `cycles` comes only from the file, so older files without it get migrated.
+    return migrate({ ...empty(), ...saved, cycles: saved.cycles });
   } catch (err) {
     if (err.code !== 'ENOENT') console.error(`Could not read ${DB_FILE}:`, err.message);
-    return empty();
+    return migrate(empty());
   }
 }
 
 let db = load();
+registerCycles(db.cycles);
 
 export const getDb = () => db;
 
@@ -67,6 +83,7 @@ export function remove(collection, id) {
 }
 
 export function resetDatabase() {
-  db = empty();
+  db = migrate(empty());
+  registerCycles(db.cycles);
   persist();
 }

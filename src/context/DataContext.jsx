@@ -12,6 +12,7 @@ import { io } from 'socket.io-client';
 import * as api from '../services/api.js';
 import { EMPTY_WORKSPACE, queryKeys, upsert, useUpdateWorkspace, useWorkspaceQuery } from '../hooks/queries/workspace.js';
 import { useAuth } from './AuthContext.jsx';
+import { visibleCycles } from '../data/cycles.js';
 
 const DataContext = createContext(null);
 
@@ -67,6 +68,9 @@ export function DataProvider({ children }) {
     socket.on('goal:updated', (goal) => update((ws) => ({ ...ws, goals: upsert(ws.goals, goal) })));
     socket.on('goal:deleted', ({ id }) => update((ws) => ({ ...ws, goals: ws.goals.filter((g) => g.id !== id) })));
     socket.on('goalPlan:updated', (plan) => update((ws) => ({ ...ws, goalPlans: upsert(ws.goalPlans, plan) })));
+    // Appraisal cycles: keep only the ones this person may see (drafts are HR-only, eligibility by department).
+    socket.on('cycle:updated', (cycle) => update((ws) => ({ ...ws, cycles: visibleCycles(upsert(ws.cycles || [], cycle), user) })));
+    socket.on('cycle:deleted', ({ id }) => update((ws) => ({ ...ws, cycles: (ws.cycles || []).filter((c) => c.id !== id) })));
     // A person was added, edited or deactivated: refresh the directory and the active-employee list.
     socket.on('user:updated', (person) => update((ws) => ({
       ...ws,
